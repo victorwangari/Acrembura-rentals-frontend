@@ -1,0 +1,1168 @@
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Droplets,
+  Plus,
+  RefreshCw,
+  Search,
+  ShoppingBag,
+  Truck,
+  Users,
+  Banknote,
+  CalendarDays,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  LoaderCircle,
+} from 'lucide-react'
+import { apiRequest } from '../api/client'
+
+const PAYMENT_METHODS = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'mpesa', label: 'M-Pesa' },
+  { value: 'bank', label: 'Bank transfer' },
+  { value: 'cheque', label: 'Cheque' },
+  { value: 'other', label: 'Other' },
+]
+
+const emptySale = {
+  sale_type: 'shop',
+  customer_name: '',
+  lorry_registration_number: '',
+  quantity: '',
+  unit_price: '',
+  payment_method: 'cash',
+  reference_number: '',
+  notes: '',
+}
+
+const emptyCustomer = {
+  full_name: '',
+  phone: '',
+  email: '',
+  address: '',
+}
+
+function today() {
+  return new Date().toLocaleDateString('en-CA')
+}
+
+function formatMoney(value) {
+  return `KSh ${Number(value || 0).toLocaleString('en-KE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function formatQuantity(value) {
+  return Number(value || 0).toLocaleString('en-KE', {
+    maximumFractionDigits: 3,
+  })
+}
+
+function formatDate(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString('en-KE', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+}
+
+function Notice({ notice, onClose }) {
+  if (!notice) return null
+
+  const success = notice.type === 'success'
+  const Icon = success ? CheckCircle2 : AlertCircle
+
+  return (
+    <div
+      role="alert"
+      className={`mb-5 flex items-start gap-3 rounded-xl border p-4 ${
+        success
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : 'border-red-200 bg-red-50 text-red-800'
+      }`}
+    >
+      <Icon size={20} className="mt-0.5 shrink-0" />
+      <p className="flex-1 text-sm">{notice.message}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded p-1 hover:bg-black/5"
+        aria-label="Dismiss notification"
+      >
+        <X size={16} />
+      </button>
+    </div>
+  )
+}
+
+function Field({ label, required, children, hint }) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-sm font-medium text-slate-700">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </span>
+      {children}
+      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+    </label>
+  )
+}
+
+const inputClass =
+  'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+
+function MetricCard({ title, value, subtitle, icon: Icon, tone = 'blue' }) {
+  const tones = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-emerald-50 text-emerald-600',
+    orange: 'bg-orange-50 text-orange-600',
+    purple: 'bg-violet-50 text-violet-600',
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm text-slate-500">{title}</p>
+          <p className="mt-2 break-words text-xl font-bold text-slate-900 sm:text-2xl">
+            {value}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
+        </div>
+        <div className={`rounded-xl p-3 ${tones[tone]}`}>
+          <Icon size={21} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function WaterManagement({ user }) {
+  const [tab, setTab] = useState('sales')
+  const [sales, setSales] = useState([])
+  const [customers, setCustomers] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [summaryDate, setSummaryDate] = useState(today())
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [saleTypeFilter, setSaleTypeFilter] = useState('')
+  const [paymentFilter, setPaymentFilter] = useState('')
+  const [customerStatusFilter, setCustomerStatusFilter] = useState('active')
+  const [search, setSearch] = useState('')
+  const [saleForm, setSaleForm] = useState(emptySale)
+  const [customerForm, setCustomerForm] = useState(emptyCustomer)
+  const [showSaleForm, setShowSaleForm] = useState(false)
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [loadingSales, setLoadingSales] = useState(true)
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [loadingSummary, setLoadingSummary] = useState(false)
+  const [notice, setNotice] = useState(null)
+
+  const isOwner = user?.role === 'owner'
+  const isLorry = saleForm.sale_type === 'lorry'
+
+  const totalAmount = useMemo(() => {
+    const quantity = Number(saleForm.quantity)
+    const price = Number(saleForm.unit_price)
+    if (
+      saleForm.quantity === '' ||
+      saleForm.unit_price === '' ||
+      !Number.isFinite(quantity) ||
+      !Number.isFinite(price) ||
+      quantity <= 0 ||
+      price <= 0
+    ) {
+      return 0
+    }
+    return quantity * price
+  }, [saleForm.quantity, saleForm.unit_price])
+
+  const loadSales = useCallback(async () => {
+    setLoadingSales(true)
+    try {
+      const params = new URLSearchParams()
+      if (saleTypeFilter) params.set('sale_type', saleTypeFilter)
+      if (paymentFilter) params.set('payment_method', paymentFilter)
+      if (startDate) params.set('start_date', `${startDate}T00:00:00`)
+      if (endDate) params.set('end_date', `${endDate}T23:59:59.999999`)
+
+      const query = params.toString()
+      const response = await apiRequest(
+        `/water-sales${query ? `?${query}` : ''}`,
+      )
+      setSales(Array.isArray(response.data) ? response.data : [])
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    } finally {
+      setLoadingSales(false)
+    }
+  }, [saleTypeFilter, paymentFilter, startDate, endDate])
+
+  const loadCustomers = useCallback(async () => {
+    setLoadingCustomers(true)
+    try {
+      const params = new URLSearchParams()
+      if (customerStatusFilter) params.set('status', customerStatusFilter)
+
+      const response = await apiRequest(
+        `/water-customers${params.toString() ? `?${params}` : ''}`,
+      )
+      setCustomers(Array.isArray(response.data) ? response.data : [])
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    } finally {
+      setLoadingCustomers(false)
+    }
+  }, [customerStatusFilter])
+
+  const loadSummary = useCallback(async () => {
+    if (!summaryDate) return
+    setLoadingSummary(true)
+    try {
+      const response = await apiRequest(
+        `/water-sales/summary?date=${encodeURIComponent(summaryDate)}`,
+      )
+      setSummary(response.data)
+    } catch (error) {
+      setSummary(null)
+      setNotice({ type: 'error', message: error.message })
+    } finally {
+      setLoadingSummary(false)
+    }
+  }, [summaryDate])
+
+  useEffect(() => {
+    loadSales()
+  }, [loadSales])
+
+  useEffect(() => {
+    loadCustomers()
+  }, [loadCustomers])
+
+  useEffect(() => {
+    loadSummary()
+  }, [loadSummary])
+
+  async function handleSaleSubmit(event) {
+    event.preventDefault()
+    setNotice(null)
+
+    if (Number(saleForm.quantity) <= 0 || Number(saleForm.unit_price) <= 0) {
+      setNotice({
+        type: 'error',
+        message: 'Quantity and unit price must both be greater than zero.',
+      })
+      return
+    }
+
+    if (isLorry && !saleForm.lorry_registration_number.trim()) {
+      setNotice({
+        type: 'error',
+        message: 'Enter the lorry registration number for a lorry sale.',
+      })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const payload = {
+        sale_type: saleForm.sale_type,
+        quantity: saleForm.quantity,
+        unit_price: saleForm.unit_price,
+        payment_method: saleForm.payment_method,
+        customer_name: saleForm.customer_name.trim() || null,
+        lorry_registration_number:
+          saleForm.lorry_registration_number.trim().toUpperCase() || null,
+        reference_number: saleForm.reference_number.trim() || null,
+        notes: saleForm.notes.trim() || null,
+      }
+
+      const response = await apiRequest('/water-sales', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+
+      setNotice({
+        type: 'success',
+        message: `${response.message} Receipt: ${response.data.sale_number}. Total: ${formatMoney(response.data.total_amount)}.`,
+      })
+      setSaleForm(emptySale)
+      setShowSaleForm(false)
+      await Promise.all([loadSales(), loadSummary()])
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCustomerSubmit(event) {
+    event.preventDefault()
+    setNotice(null)
+    setSaving(true)
+
+    try {
+      const response = await apiRequest('/water-customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          full_name: customerForm.full_name.trim(),
+          phone: customerForm.phone.trim() || null,
+          email: customerForm.email.trim() || null,
+          address: customerForm.address.trim() || null,
+          customer_type: 'external',
+        }),
+      })
+
+      setNotice({
+        type: 'success',
+        message: response.message,
+      })
+      setCustomerForm(emptyCustomer)
+      setShowCustomerForm(false)
+      await loadCustomers()
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function changeCustomerStatus(customer) {
+    if (!isOwner) return
+
+    const nextStatus = customer.status === 'active' ? 'inactive' : 'active'
+    const confirmed = window.confirm(
+      `${nextStatus === 'inactive' ? 'Deactivate' : 'Reactivate'} ${customer.full_name}?`,
+    )
+    if (!confirmed) return
+
+    setNotice(null)
+    try {
+      await apiRequest(`/water-customers/${customer.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      setNotice({
+        type: 'success',
+        message: `${customer.full_name} has been ${nextStatus === 'active' ? 'reactivated' : 'deactivated'}.`,
+      })
+      await loadCustomers()
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    }
+  }
+
+  const filteredCustomers = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return customers
+    return customers.filter((customer) =>
+      [customer.full_name, customer.phone, customer.email, customer.address]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(term)),
+    )
+  }, [customers, search])
+
+  const salesTotal = sales.reduce(
+    (sum, sale) => sum + Number(sale.total_amount || 0),
+    0,
+  )
+
+  const salesQuantity = sales.reduce(
+    (sum, sale) => sum + Number(sale.quantity || 0),
+    0,
+  )
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-sm font-medium text-blue-600">Water operations</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Water Management
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            Record shop and lorry sales, manage external customers, and monitor daily water revenue.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setNotice(null)
+            if (tab === 'customers') setShowCustomerForm(true)
+            else setShowSaleForm(true)
+          }}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+        >
+          <Plus size={18} />
+          {tab === 'customers' ? 'Add customer' : 'Record water sale'}
+        </button>
+      </div>
+
+      <Notice notice={notice} onClose={() => setNotice(null)} />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          title="Today's revenue"
+          value={formatMoney(summary?.total_sales)}
+          subtitle={summaryDate}
+          icon={Banknote}
+          tone="green"
+        />
+        <MetricCard
+          title="Water sold today"
+          value={`${formatQuantity(summary?.total_quantity)} units`}
+          subtitle="Total quantity recorded"
+          icon={Droplets}
+          tone="blue"
+        />
+        <MetricCard
+          title="Shop sales"
+          value={formatMoney(summary?.by_type?.shop?.total_sales)}
+          subtitle={`${formatQuantity(summary?.by_type?.shop?.quantity)} units`}
+          icon={ShoppingBag}
+          tone="orange"
+        />
+        <MetricCard
+          title="Lorry sales"
+          value={formatMoney(summary?.by_type?.lorry?.total_sales)}
+          subtitle={`${formatQuantity(summary?.by_type?.lorry?.quantity)} units`}
+          icon={Truck}
+          tone="purple"
+        />
+      </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="font-bold text-slate-900">Daily sales summary</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Sales totals grouped by payment method.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <CalendarDays size={18} className="text-slate-400" />
+            <input
+              type="date"
+              value={summaryDate}
+              onChange={setSummaryDate}
+              className={inputClass}
+              aria-label="Summary date"
+            />
+            <button
+              type="button"
+              onClick={loadSummary}
+              disabled={loadingSummary}
+              className="rounded-xl border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              aria-label="Refresh summary"
+            >
+              <RefreshCw size={17} className={loadingSummary ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="rounded-xl bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-700">Payment breakdown</h3>
+            <div className="mt-3 space-y-3">
+              {PAYMENT_METHODS.map((method) => {
+                const amount = Number(
+                  summary?.by_payment_method?.[method.value] || 0,
+                )
+                const total = Number(summary?.total_sales || 0)
+                const width = total > 0 ? Math.min((amount / total) * 100, 100) : 0
+
+                return (
+                  <div key={method.value}>
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span className="text-slate-600">{method.label}</span>
+                      <span className="font-semibold text-slate-800">
+                        {formatMoney(amount)}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-all"
+                        style={{ width: `${width}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-100 p-4">
+              <p className="text-sm text-slate-500">Transactions shown</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">{sales.length}</p>
+              <p className="mt-1 text-xs text-slate-400">Based on current filters</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 p-4">
+              <p className="text-sm text-slate-500">Filtered sales amount</p>
+              <p className="mt-2 break-words text-xl font-bold text-slate-900">
+                {formatMoney(salesTotal)}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Based on current filters</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 p-4 sm:col-span-2">
+              <p className="text-sm text-slate-500">Filtered quantity sold</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">
+                {formatQuantity(salesQuantity)} units
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-2 border-b border-slate-200">
+        {[
+          { id: 'sales', label: 'Sales history', icon: Banknote },
+          { id: 'customers', label: 'Water customers', icon: Users },
+        ].map((item) => {
+          const Icon = item.icon
+          const active = tab === item.id
+
+          return (
+            <button
+              type="button"
+              key={item.id}
+              onClick={() => {
+                setTab(item.id)
+                setNotice(null)
+              }}
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
+                active
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Icon size={17} />
+              {item.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {tab === 'sales' ? (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 p-4 sm:p-5">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h2 className="font-bold text-slate-900">Water sales history</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  View shop and lorry sales recorded by your team.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Field label="Sale type">
+                  <select
+                    value={saleTypeFilter}
+                    onChange={(event) => setSaleTypeFilter(event.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">All types</option>
+                    <option value="shop">Shop sale</option>
+                    <option value="lorry">Lorry sale</option>
+                  </select>
+                </Field>
+                <Field label="Payment method">
+                  <select
+                    value={paymentFilter}
+                    onChange={(event) => setPaymentFilter(event.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">All methods</option>
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method.value} value={method.value}>
+                        {method.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="From date">
+                  <input
+                    type="date"
+                    value={startDate}
+                    max={endDate || undefined}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="To date">
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-500">
+                  {sales.length} transaction{sales.length === 1 ? '' : 's'} found
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaleTypeFilter('')
+                    setPaymentFilter('')
+                    setStartDate('')
+                    setEndDate('')
+                  }}
+                  className="text-sm font-semibold text-blue-600 hover:text-blue-800"
+                >
+                  Clear filters
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {loadingSales ? (
+            <div className="flex items-center justify-center gap-2 p-12 text-sm text-slate-500">
+              <LoaderCircle size={18} className="animate-spin" />
+              Loading sales...
+            </div>
+          ) : sales.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Droplets size={23} />
+              </div>
+              <h3 className="mt-4 font-semibold text-slate-800">No sales found</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Record a water sale or change your filters.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowSaleForm(true)}
+                className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Record first sale
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[950px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4 font-semibold">Receipt</th>
+                    <th className="px-5 py-4 font-semibold">Date</th>
+                    <th className="px-5 py-4 font-semibold">Type / customer</th>
+                    <th className="px-5 py-4 font-semibold">Quantity</th>
+                    <th className="px-5 py-4 font-semibold">Unit price</th>
+                    <th className="px-5 py-4 font-semibold">Payment</th>
+                    <th className="px-5 py-4 text-right font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sales.map((sale) => (
+                    <tr key={sale.id} className="transition hover:bg-slate-50/70">
+                      <td className="px-5 py-4">
+                        <span className="font-semibold text-blue-700">
+                          {sale.sale_number}
+                        </span>
+                        {sale.reference_number && (
+                          <p className="mt-1 text-xs text-slate-400">
+                            Ref: {sale.reference_number}
+                          </p>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                        {formatDate(sale.sale_date)}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            sale.sale_type === 'lorry'
+                              ? 'bg-violet-50 text-violet-700'
+                              : 'bg-orange-50 text-orange-700'
+                          }`}
+                        >
+                          {sale.sale_type === 'lorry' ? 'Lorry' : 'Shop'}
+                        </span>
+                        <p className="mt-1.5 font-medium text-slate-800">
+                          {sale.customer_name || 'Walk-in customer'}
+                        </p>
+                        {sale.lorry_registration_number && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {sale.lorry_registration_number}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-slate-700">
+                        {formatQuantity(sale.quantity)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                        {formatMoney(sale.unit_price)}
+                      </td>
+                      <td className="px-5 py-4 capitalize text-slate-600">
+                        {sale.payment_method === 'mpesa'
+                          ? 'M-Pesa'
+                          : sale.payment_method}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">
+                        {formatMoney(sale.total_amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end border-t border-slate-100 p-4">
+            <button
+              type="button"
+              onClick={loadSales}
+              disabled={loadingSales}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={loadingSales ? 'animate-spin' : ''} />
+              Refresh sales
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col justify-between gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5">
+            <div>
+              <h2 className="font-bold text-slate-900">External water customers</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Manage people who receive water outside the rental properties.
+              </p>
+            </div>
+            <Field label="Customer status">
+              <select
+                value={customerStatusFilter}
+                onChange={(event) => setCustomerStatusFilter(event.target.value)}
+                className={inputClass}
+              >
+                <option value="active">Active customers</option>
+                <option value="inactive">Inactive customers</option>
+              </select>
+            </Field>
+          </div>
+
+          <div className="border-b border-slate-100 p-4">
+            <div className="relative max-w-md">
+              <Search
+                size={17}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search name, phone, email or address..."
+                className={`${inputClass} pl-10`}
+              />
+            </div>
+          </div>
+
+          {loadingCustomers ? (
+            <div className="flex items-center justify-center gap-2 p-12 text-sm text-slate-500">
+              <LoaderCircle size={18} className="animate-spin" />
+              Loading customers...
+            </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="p-12 text-center">
+              <Users size={28} className="mx-auto text-slate-300" />
+              <h3 className="mt-3 font-semibold text-slate-800">No customers found</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Register an external water customer to get started.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowCustomerForm(true)}
+                className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Add customer
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredCustomers.map((customer) => (
+                <article
+                  key={customer.id}
+                  className="rounded-xl border border-slate-200 p-4 transition hover:border-blue-200 hover:shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                        <Users size={19} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate font-semibold text-slate-900">
+                          {customer.full_name}
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Customer #{customer.id}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        customer.status === 'active'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {customer.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <p>{customer.phone || 'No phone provided'}</p>
+                    <p className="break-all">{customer.email || 'No email provided'}</p>
+                    <p>{customer.address || 'No address provided'}</p>
+                  </div>
+
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => changeCustomerStatus(customer)}
+                      className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      {customer.status === 'active' ? 'Deactivate customer' : 'Reactivate customer'}
+                    </button>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end border-t border-slate-100 p-4">
+            <button
+              type="button"
+              onClick={loadCustomers}
+              disabled={loadingCustomers}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={loadingCustomers ? 'animate-spin' : ''} />
+              Refresh customers
+            </button>
+          </div>
+        </section>
+      )}
+
+      {showSaleForm && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-3 backdrop-blur-sm sm:items-center sm:p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sale-dialog-title"
+            className="my-4 w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
+              <div>
+                <h2 id="sale-dialog-title" className="text-lg font-bold text-slate-900">
+                  Record water sale
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Enter the quantity sold and payment details.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSaleForm(false)}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Close sale form"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaleSubmit} className="space-y-5 p-5">
+              <Field label="Sale type" required>
+                <select
+                  value={saleForm.sale_type}
+                  onChange={(event) =>
+                    setSaleForm((previous) => ({
+                      ...previous,
+                      sale_type: event.target.value,
+                      lorry_registration_number:
+                        event.target.value === 'lorry'
+                          ? previous.lorry_registration_number
+                          : '',
+                    }))
+                  }
+                  className={inputClass}
+                  required
+                >
+                  <option value="shop">Shop sale</option>
+                  <option value="lorry">Lorry sale</option>
+                </select>
+              </Field>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Customer name" hint="Optional for walk-in sales">
+                  <input
+                    value={saleForm.customer_name}
+                    onChange={(event) =>
+                      setSaleForm((previous) => ({
+                        ...previous,
+                        customer_name: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                    placeholder="Customer or business name"
+                  />
+                </Field>
+
+                {isLorry && (
+                  <Field label="Lorry registration number" required>
+                    <input
+                      value={saleForm.lorry_registration_number}
+                      onChange={(event) =>
+                        setSaleForm((previous) => ({
+                          ...previous,
+                          lorry_registration_number: event.target.value.toUpperCase(),
+                        }))
+                      }
+                      className={inputClass}
+                      maxLength={30}
+                      placeholder="e.g. KDA 123A"
+                      required
+                    />
+                  </Field>
+                )}
+
+                <Field label="Quantity (units)" required>
+                  <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={saleForm.quantity}
+                    onChange={(event) =>
+                      setSaleForm((previous) => ({
+                        ...previous,
+                        quantity: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                    placeholder="e.g. 5"
+                    required
+                  />
+                </Field>
+
+                <Field label="Unit price (KSh)" required>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={saleForm.unit_price}
+                    onChange={(event) =>
+                      setSaleForm((previous) => ({
+                        ...previous,
+                        unit_price: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                    placeholder="e.g. 100"
+                    required
+                  />
+                </Field>
+
+                <Field label="Payment method" required>
+                  <select
+                    value={saleForm.payment_method}
+                    onChange={(event) =>
+                      setSaleForm((previous) => ({
+                        ...previous,
+                        payment_method: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                    required
+                  >
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method.value} value={method.value}>
+                        {method.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Payment reference" hint="Optional transaction reference">
+                  <input
+                    value={saleForm.reference_number}
+                    onChange={(event) =>
+                      setSaleForm((previous) => ({
+                        ...previous,
+                        reference_number: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                    placeholder="e.g. M-Pesa code"
+                  />
+                </Field>
+              </div>
+
+              <Field label="Notes">
+                <textarea
+                  rows={2}
+                  value={saleForm.notes}
+                  onChange={(event) =>
+                    setSaleForm((previous) => ({
+                      ...previous,
+                      notes: event.target.value,
+                    }))
+                  }
+                  className={inputClass}
+                  placeholder="Optional notes about this sale"
+                />
+              </Field>
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <p className="text-sm text-blue-700">Calculated total</p>
+                <p className="mt-1 text-2xl font-bold text-blue-900">
+                  {formatMoney(totalAmount)}
+                </p>
+                <p className="mt-1 text-xs text-blue-700">
+                  Quantity multiplied by unit price.
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowSaleForm(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || totalAmount <= 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving && <LoaderCircle size={17} className="animate-spin" />}
+                  {saving ? 'Saving sale...' : 'Save sale'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showCustomerForm && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-3 backdrop-blur-sm sm:items-center sm:p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-dialog-title"
+            className="my-4 w-full max-w-xl rounded-2xl bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
+              <div>
+                <h2 id="customer-dialog-title" className="text-lg font-bold text-slate-900">
+                  Register water customer
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Add an external customer who receives water.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomerForm(false)}
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Close customer form"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCustomerSubmit} className="space-y-4 p-5">
+              <Field label="Full name" required>
+                <input
+                  value={customerForm.full_name}
+                  onChange={(event) =>
+                    setCustomerForm((previous) => ({
+                      ...previous,
+                      full_name: event.target.value,
+                    }))
+                  }
+                  className={inputClass}
+                  placeholder="Enter full name"
+                  required
+                  maxLength={150}
+                />
+              </Field>
+
+              <Field label="Phone number">
+                <input
+                  type="tel"
+                  value={customerForm.phone}
+                  onChange={(event) =>
+                    setCustomerForm((previous) => ({
+                      ...previous,
+                      phone: event.target.value,
+                    }))
+                  }
+                  className={inputClass}
+                  placeholder="e.g. 07XX XXX XXX"
+                />
+              </Field>
+
+              <Field label="Email address">
+                <input
+                  type="email"
+                  value={customerForm.email}
+                  onChange={(event) =>
+                    setCustomerForm((previous) => ({
+                      ...previous,
+                      email: event.target.value,
+                    }))
+                  }
+                  className={inputClass}
+                  placeholder="customer@example.com"
+                />
+              </Field>
+
+              <Field label="Delivery or contact address">
+                <textarea
+                  rows={2}
+                  value={customerForm.address}
+                  onChange={(event) =>
+                    setCustomerForm((previous) => ({
+                      ...previous,
+                      address: event.target.value,
+                    }))
+                  }
+                  className={inputClass}
+                  placeholder="Enter address"
+                />
+              </Field>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomerForm(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || !customerForm.full_name.trim()}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving && <LoaderCircle size={17} className="animate-spin" />}
+                  {saving ? 'Saving customer...' : 'Register customer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

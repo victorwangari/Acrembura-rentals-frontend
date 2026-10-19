@@ -1,0 +1,27 @@
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
