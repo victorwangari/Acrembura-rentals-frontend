@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import WaterMeterBilling from './WaterMeterBilling';
+import WaterRates from './WaterRates';
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -519,18 +520,20 @@ export default function WaterManagement({ user }) {
             Record shop and lorry sales, manage external customers, and monitor daily water revenue.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setNotice(null)
-            if (tab === 'customers') setShowCustomerForm(true)
-            else setShowSaleForm(true)
-          }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-        >
-          <Plus size={18} />
-          {tab === 'customers' ? 'Add customer' : 'Record water sale'}
-        </button>
+        {tab !== 'rates' && (
+          <button
+            type="button"
+            onClick={() => {
+              setNotice(null)
+              if (tab === 'customers') setShowCustomerForm(true)
+              else setShowSaleForm(true)
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+          >
+            <Plus size={18} />
+            {tab === 'customers' ? 'Add customer' : 'Record water sale'}
+          </button>
+        )}
       </div>
 
       <Notice notice={notice} onClose={() => setNotice(null)} />
@@ -654,6 +657,7 @@ export default function WaterManagement({ user }) {
           { id: 'sales', label: 'Sales history', icon: Banknote },
           { id: 'customers', label: 'Water customers', icon: Users },
           { id: 'billing', label: 'Meter Readings & Billing', icon: Droplets },
+          { id: 'rates', label: 'Water Rates', icon: Droplets },
         ].map((item) => {
           const Icon = item.icon
           const active = tab === item.id
@@ -992,6 +996,7 @@ export default function WaterManagement({ user }) {
         </section>
       )}
       {tab === 'billing' && <WaterMeterBilling user={user} />}
+      {tab === 'rates' && <WaterRates user={user} />}
       {showSaleForm && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-3 pt-6 backdrop-blur-sm sm:p-6 sm:pt-6">
           <div
