@@ -600,7 +600,8 @@ export default function BillingInvoices({ openCreateRequest = 0 }) {
 
         try {
             const token = localStorage.getItem('acrembura_access_token')
-            const response = await fetch(`/api${path}`, {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
+            const response = await fetch(`${apiBaseUrl}${path}`, {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             })
 
