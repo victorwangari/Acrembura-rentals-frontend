@@ -165,7 +165,7 @@ function MetricCard({ label, value, detail, icon: Icon, color }) {
     )
 }
 
-export default function BillingInvoices() {
+export default function BillingInvoices({ openCreateRequest = 0 }) {
     const [invoices, setInvoices] = useState([])
     const [tenants, setTenants] = useState([])
     const [customers, setCustomers] = useState([])
@@ -185,6 +185,12 @@ export default function BillingInvoices() {
     const [selectedInvoice, setSelectedInvoice] = useState(null)
     const [payments, setPayments] = useState([])
     const [paymentsLoading, setPaymentsLoading] = useState(false)
+
+    useEffect(() => {
+        if (openCreateRequest > 0) {
+            openCreateInvoice()
+        }
+    }, [openCreateRequest])
 
     const loadData = useCallback(async (quiet = false) => {
         if (quiet) setRefreshing(true)

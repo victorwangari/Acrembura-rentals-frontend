@@ -348,7 +348,7 @@ function StatusBadge({ status }) {
   )
 }
 
-function DashboardContent() {
+function DashboardContent({ onNewInvoice }) {
   const [period, setPeriod] = useState('Last 6 months')
   const [dashboardData, setDashboardData] = useState(null)
   const [dashboardLoading, setDashboardLoading] = useState(true)
@@ -621,11 +621,7 @@ function DashboardContent() {
 
           <button
             type="button"
-            onClick={() =>
-              window.alert(
-                'The invoice form will be implemented in the billing module.',
-              )
-            }
+            onClick={onNewInvoice}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700"
           >
             <Plus size={17} />
@@ -1117,6 +1113,7 @@ function DashboardLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [activePage, setActivePage] = useState('Dashboard')
+  const [invoiceCreateRequest, setInvoiceCreateRequest] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -1210,7 +1207,12 @@ function DashboardLayout() {
         <main className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8">
 
           {activePage === 'Dashboard' ? (
-            <DashboardContent />
+            <DashboardContent
+              onNewInvoice={() => {
+                setActivePage('Billing & Invoices')
+                setInvoiceCreateRequest((count) => count + 1)
+              }}
+            />
           ) : activePage === 'Properties & Units' ? (
             <PropertiesUnits user={user} />
           ) : activePage === 'Tenants' ? (
@@ -1218,7 +1220,7 @@ function DashboardLayout() {
           ) : activePage === 'Water Management' ? (
             <WaterManagement user={user} />
           ) : activePage === 'Billing & Invoices' ? (
-            <BillingInvoices />
+            <BillingInvoices openCreateRequest={invoiceCreateRequest} />
           ) : activePage === 'Payments' ? (
             <Payments />
           ) : activePage === 'Expenses' ? (
