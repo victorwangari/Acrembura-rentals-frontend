@@ -54,6 +54,7 @@ import Expenses from './pages/Expenses';
 import FinancialReports from './pages/FinancialReports';
 import Messages from './pages/Messages';
 import Notifications from './pages/Notifications';
+import UserManagement from './pages/UserManagement';
 import { apiRequest } from './api/client';
 
 const navigation = [
@@ -67,6 +68,7 @@ const navigation = [
   { label: 'Financial Reports', icon: ChartNoAxesCombined },
   { label: 'Messages', icon: Mail },
   { label: 'Notifications', icon: Bell },
+  { label: 'User Management', icon: Settings },
 ]
 
 const salesData = [
@@ -141,7 +143,8 @@ function Sidebar({
       ? navigation.filter(
           (item) =>
             item.label !== 'Financial Reports' &&
-            item.label !== 'Messages'
+            item.label !== 'Messages' &&
+            item.label !== 'User Management'
         )
       : navigation
 
@@ -1311,6 +1314,8 @@ function DashboardLayout() {
             <Messages />
           ) : activePage === 'Notifications' ? (
             <Notifications onUnreadCountChange={setUnreadNotificationCount} />
+          ) : activePage === 'User Management' && user?.role === 'owner' ? (
+            <UserManagement />
           ) : (
             <PlaceholderPage title={activePage} />
           )}
