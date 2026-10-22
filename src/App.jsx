@@ -354,6 +354,7 @@ function DashboardContent({ onNewInvoice }) {
   const [dashboardLoading, setDashboardLoading] = useState(true)
   const [dashboardError, setDashboardError] = useState('')
   const [recentTransactions, setRecentTransactions] = useState([])
+  const [dateFilter, setDateFilter] = useState('today')
 
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true)
@@ -535,6 +536,27 @@ function DashboardContent({ onNewInvoice }) {
 
   const totalReceived = totalInvoicePayments + totalWaterSales
 
+  const dateFilteredTransactions = recentTransactions.filter((transaction) => {
+    if (dateFilter === 'all') return true
+    if (!transaction.date) return false
+
+    const transactionDate = new Date(transaction.date)
+    if (Number.isNaN(transactionDate.getTime())) return false
+
+    const now = new Date()
+    const start = new Date(now)
+    start.setHours(0, 0, 0, 0)
+
+    if (dateFilter === 'week') {
+      const day = (start.getDay() + 6) % 7
+      start.setDate(start.getDate() - day)
+    } else if (dateFilter === 'month') {
+      start.setDate(1)
+    }
+
+    return transactionDate >= start && transactionDate <= now
+  })
+
   const chartMonths = (() => {
     const now = new Date()
     const count = period === 'Last 3 months'
@@ -610,14 +632,21 @@ function DashboardContent({ onNewInvoice }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
-          >
+          <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 shadow-sm">
             <CalendarDays size={16} />
-            Today
+            <select
+              aria-label="Filter recent transactions by date"
+              value={dateFilter}
+              onChange={(event) => setDateFilter(event.target.value)}
+              className="max-w-[125px] bg-transparent text-sm outline-none"
+            >
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+              <option value="all">All time</option>
+            </select>
             <ChevronDown size={14} />
-          </button>
+          </label>
 
           <button
             type="button"
@@ -710,12 +739,17 @@ function DashboardContent({ onNewInvoice }) {
                 Combined revenue
               </p>
               <p className="mt-1 text-xl font-bold text-slate-800">
-                KES 1.08M
+                {formatCurrency(
+                  chartMonths.reduce(
+                    (sum, item) =>
+                      sum + Number(item.rent || 0) + Number(item.water || 0),
+                    0,
+                  ),
+                )}
               </p>
             </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-              <TrendingUp size={13} />
-              12.8%
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+              {period}
             </span>
           </div>
 
@@ -952,7 +986,7 @@ function DashboardContent({ onNewInvoice }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {recentTransactions.map((transaction) => (
+                {dateFilteredTransactions.map((transaction) => (
                   <tr
                     key={transaction.id}
                     className="hover:bg-slate-50/70"
@@ -1001,9 +1035,13 @@ function DashboardContent({ onNewInvoice }) {
             <p className="text-xs text-slate-400">
               {dashboardLoading
                 ? 'Loading recent transactions...'
-                : recentTransactions.length > 0
-                  ? `Showing ${recentTransactions.length} latest recorded transactions.`
-                  : 'No recorded payments or water sales found.'}
+                : dateFilteredTransactions.length > 0
+                  ? `Showing ${dateFilteredTransactions.length} latest transaction(s) for ${
+                      dateFilter === 'today' ? 'today' :
+                      dateFilter === 'week' ? 'this week' :
+                      dateFilter === 'month' ? 'this month' : 'all time'
+                    }.`
+                  : 'No recorded transactions found for this date range.'}
             </p>
           </div>
         </article>
