@@ -223,6 +223,35 @@ export default function WaterMeterBilling({ user }) {
     [meters],
   )
 
+  // Resolve the opening reading from the latest saved reading
+  // before the selected date, falling back to the meter's initial value.
+  const getOpeningReading = (meterId, readingDate) => {
+    if (!meterId || !readingDate) return ''
+
+    const previousReading = readings
+      .filter(
+        (reading) =>
+          String(reading.meter_id) === String(meterId) &&
+          reading.reading_date < readingDate,
+      )
+      .sort((a, b) => {
+        const dateDifference = String(b.reading_date).localeCompare(
+          String(a.reading_date),
+        )
+        if (dateDifference !== 0) return dateDifference
+        return Number(b.id || 0) - Number(a.id || 0)
+      })[0]
+
+    if (previousReading) {
+      return String(previousReading.closing_reading)
+    }
+
+    const meter = meterById.get(Number(meterId))
+    return meter?.opening_reading != null
+      ? String(meter.opening_reading)
+      : ''
+  }
+
   const connectionOwnerLabel = (connection) => {
     if (!connection) return 'Unknown customer'
     if (connection.tenant) {
@@ -836,7 +865,14 @@ export default function WaterMeterBilling({ user }) {
         <Modal title="Record meter reading" onClose={() => setReadingFormOpen(false)}>
           <form onSubmit={submitReading} className="space-y-4 p-5">
             <Field label="Active meter">
-              <select className={inputClass} required value={readingForm.meter_id} onChange={(event) => setReadingForm((prev) => ({ ...prev, meter_id: event.target.value, opening_reading: '' }))}>
+              <select className={inputClass} required value={readingForm.meter_id} onChange={(event) => {
+                const meterId = event.target.value
+                setReadingForm((prev) => ({
+                  ...prev,
+                  meter_id: meterId,
+                  opening_reading: getOpeningReading(meterId, prev.reading_date),
+                }))
+              }}>
                 <option value="">Select meter</option>
                 {meters.filter((meter) => meter.status === 'active' && (connectionById.get(meter.connection_id)?.status === 'active')).map((meter) => (
                   <option key={meter.id} value={meter.id}>{meter.meter_number} — {meterOwnerLabel(meter)}</option>
@@ -851,9 +887,18 @@ export default function WaterMeterBilling({ user }) {
               </div>
             )}
             <Field label="Reading date">
-              <input type="date" required className={inputClass} value={readingForm.reading_date} onChange={(event) => setReadingForm((prev) => ({ ...prev, reading_date: event.target.value }))} />
+              <input type="date" required className={inputClass} value={readingForm.reading_date} onChange={(event) => {
+                const readingDate = event.target.value
+                setReadingForm((prev) => ({
+                  ...prev,
+                  reading_date: readingDate,
+                  opening_reading: prev.meter_id
+                    ? getOpeningReading(prev.meter_id, readingDate)
+                    : prev.opening_reading,
+                }))
+              }} />
             </Field>
-            <Field label="Opening reading (optional)" hint="Leave blank after the first reading to use the previous closing value.">
+            <Field label="Opening reading" hint="Automatically filled from the previous closing reading, or the meter's initial reading.">
               <input type="number" min="0" step="any" className={inputClass} value={readingForm.opening_reading} onChange={(event) => setReadingForm((prev) => ({ ...prev, opening_reading: event.target.value }))} />
             </Field>
             <Field label="Closing reading">
