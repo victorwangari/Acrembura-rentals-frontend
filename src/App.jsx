@@ -17,6 +17,7 @@ import {
   Settings,
   Search,
   Bell,
+  Mail,
   Menu,
   X,
   Plus,
@@ -51,6 +52,8 @@ import BillingInvoices from './pages/BillingInvoices';
 import Payments from './pages/Payments';
 import Expenses from './pages/Expenses';
 import FinancialReports from './pages/FinancialReports';
+import Messages from './pages/Messages';
+import Notifications from './pages/Notifications';
 import { apiRequest } from './api/client';
 
 const navigation = [
@@ -62,6 +65,8 @@ const navigation = [
   { label: 'Payments', icon: CreditCard },
   { label: 'Expenses', icon: Receipt },
   { label: 'Financial Reports', icon: ChartNoAxesCombined },
+  { label: 'Messages', icon: Mail },
+  { label: 'Notifications', icon: Bell },
 ]
 
 const salesData = [
@@ -133,7 +138,11 @@ function Sidebar({
 }) {
   const visibleNavigation =
     user?.role === 'receptionist'
-      ? navigation.filter((item) => item.label !== 'Financial Reports')
+      ? navigation.filter(
+          (item) =>
+            item.label !== 'Financial Reports' &&
+            item.label !== 'Messages'
+        )
       : navigation
 
   return (
@@ -1154,6 +1163,30 @@ function DashboardLayout() {
   const [invoiceCreateRequest, setInvoiceCreateRequest] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadUnreadNotificationCount() {
+      try {
+        const result = await apiRequest('/notifications/unread-count')
+        if (!cancelled) {
+          setUnreadNotificationCount(
+            Number(result.data?.unread_count ?? 0)
+          )
+        }
+      } catch {
+        if (!cancelled) setUnreadNotificationCount(0)
+      }
+    }
+
+    if (user) loadUnreadNotificationCount()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   function handleLogout() {
     logout()
@@ -1210,13 +1243,22 @@ function DashboardLayout() {
 
             <button
               type="button"
-              aria-label="Notifications"
-              onClick={() =>
-                window.alert('Notifications will be connected to the backend.')
-              }
+              aria-label={`Notifications${
+                unreadNotificationCount > 0
+                  ? `, ${unreadNotificationCount} unread`
+                  : ''
+              }`}
+              onClick={() => setActivePage('Notifications')}
               className="relative rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50"
             >
               <Bell size={18} />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                  {unreadNotificationCount > 99
+                    ? '99+'
+                    : unreadNotificationCount}
+                </span>
+              )}
             </button>
 
             <div className="hidden h-8 w-px bg-slate-200 sm:block" />
@@ -1265,6 +1307,10 @@ function DashboardLayout() {
             <Expenses user={user} />
           ) : activePage === 'Financial Reports' && user?.role === 'owner' ? (
             <FinancialReports />
+          ) : activePage === 'Messages' && user?.role === 'owner' ? (
+            <Messages />
+          ) : activePage === 'Notifications' ? (
+            <Notifications onUnreadCountChange={setUnreadNotificationCount} />
           ) : (
             <PlaceholderPage title={activePage} />
           )}
