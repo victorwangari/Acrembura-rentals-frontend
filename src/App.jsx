@@ -1118,20 +1118,17 @@ function DashboardContent({ onNewInvoice }) {
 
       <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200/80 py-5 text-xs text-slate-400 sm:flex-row">
         <p>© 2026 AcreMbura Water & Rentals Management System</p>
-        <div className="flex flex-col items-center gap-2">
-          {/* Opti-Nexus Technologies logo */}
-          <div className="flex h-10 items-center justify-center">
-            <img
-              src="/ON-FAVICON.png"
-              alt="Opti-Nexus Technologies"
-              className="max-h-10 max-w-36 object-contain"
-              onError={(event) => {
-                event.currentTarget.style.display = 'none'
-              }}
-            />
-          </div>
+        <div className="flex flex-row items-center justify-end gap-3">
+          <img
+            src="/ON-FAVICON.png"
+            alt="Opti-Nexus Technologies"
+            className="h-9 w-auto max-w-24 shrink-0 object-contain"
+            onError={(event) => {
+              event.currentTarget.style.display = 'none'
+            }}
+          />
 
-          <p className="text-center text-xs text-slate-400">
+          <p className="text-right text-xs text-slate-400 sm:text-sm">
             A project by{' '}
             <span className="font-semibold text-slate-300">
               Opti-Nexus Technologies
@@ -1262,8 +1259,8 @@ function DashboardLayout() {
             <button
               type="button"
               aria-label={`Notifications${unreadNotificationCount > 0
-                  ? `, ${unreadNotificationCount} unread`
-                  : ''
+                ? `, ${unreadNotificationCount} unread`
+                : ''
                 }`}
               onClick={() => setActivePage('Notifications')}
               className="relative rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50"
