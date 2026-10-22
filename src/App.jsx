@@ -141,11 +141,11 @@ function Sidebar({
   const visibleNavigation =
     user?.role === 'receptionist'
       ? navigation.filter(
-          (item) =>
-            item.label !== 'Financial Reports' &&
-            item.label !== 'Messages' &&
-            item.label !== 'User Management'
-        )
+        (item) =>
+          item.label !== 'Financial Reports' &&
+          item.label !== 'Messages' &&
+          item.label !== 'User Management'
+      )
       : navigation
 
   return (
@@ -1023,9 +1023,9 @@ function DashboardContent({ onNewInvoice }) {
                     <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-500">
                       {transaction.date
                         ? new Date(transaction.date).toLocaleString('en-KE', {
-                            dateStyle: 'medium',
-                            timeStyle: 'short',
-                          })
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })
                         : 'Date unavailable'}
                     </td>
                     <td className="px-4 py-4 text-xs text-slate-600">
@@ -1048,11 +1048,10 @@ function DashboardContent({ onNewInvoice }) {
               {dashboardLoading
                 ? 'Loading recent transactions...'
                 : dateFilteredTransactions.length > 0
-                  ? `Showing ${dateFilteredTransactions.length} latest transaction(s) for ${
-                      dateFilter === 'today' ? 'today' :
-                      dateFilter === 'week' ? 'this week' :
+                  ? `Showing ${dateFilteredTransactions.length} latest transaction(s) for ${dateFilter === 'today' ? 'today' :
+                    dateFilter === 'week' ? 'this week' :
                       dateFilter === 'month' ? 'this month' : 'all time'
-                    }.`
+                  }.`
                   : 'No recorded transactions found for this date range.'}
             </p>
           </div>
@@ -1119,10 +1118,26 @@ function DashboardContent({ onNewInvoice }) {
 
       <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-slate-200/80 py-5 text-xs text-slate-400 sm:flex-row">
         <p>© 2026 AcreMbura Water & Rentals Management System</p>
-        <p className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Frontend · API integration in progress
-        </p>
+        <div className="flex flex-col items-center gap-2">
+          {/* Opti-Nexus Technologies logo */}
+          <div className="flex h-10 items-center justify-center">
+            <img
+              src="/ON-FAVICON.png"
+              alt="Opti-Nexus Technologies"
+              className="max-h-10 max-w-36 object-contain"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none'
+              }}
+            />
+          </div>
+
+          <p className="text-center text-xs text-slate-400">
+            A project by{' '}
+            <span className="font-semibold text-slate-300">
+              Opti-Nexus Technologies
+            </span>
+          </p>
+        </div>
       </footer>
     </>
   )
@@ -1246,11 +1261,10 @@ function DashboardLayout() {
 
             <button
               type="button"
-              aria-label={`Notifications${
-                unreadNotificationCount > 0
+              aria-label={`Notifications${unreadNotificationCount > 0
                   ? `, ${unreadNotificationCount} unread`
                   : ''
-              }`}
+                }`}
               onClick={() => setActivePage('Notifications')}
               className="relative rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50"
             >
