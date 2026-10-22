@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "AcreMbura Water and Rentals Management System",
+  "short_name": "AcreMbura",
+  "description": "Manage water sales, rentals, billing, payments and expenses.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#087F8C",
+  "icons": [
+    {
+      "src": "/acrembura-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/acrembura-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
