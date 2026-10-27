@@ -32,6 +32,7 @@ const emptySale = {
   sale_date: today(),
   customer_name: '',
   lorry_registration_number: '',
+  lorry_capacity_liters: '',
   opening_reading: '',
   closing_reading: '',
   quantity: '',
@@ -212,11 +213,20 @@ export default function WaterManagement({ user }) {
     ? lorryQuantity
     : Number(saleForm.quantity || 0)
 
+  const fixedLorryPrices = {
+    5000: 500,
+    10000: 1000,
+  }
+
   const displayedUnitPrice = isLorry
-    ? Number(applicableLorryRate?.unit_price || 0)
+    ? Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
     : Number(saleForm.unit_price || 0)
 
   const totalAmount = useMemo(() => {
+    if (isLorry) {
+      return Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
+    }
+
     if (
       !Number.isFinite(displayedQuantity) ||
       !Number.isFinite(displayedUnitPrice) ||
@@ -227,7 +237,12 @@ export default function WaterManagement({ user }) {
     }
 
     return displayedQuantity * displayedUnitPrice
-  }, [displayedQuantity, displayedUnitPrice])
+  }, [
+    isLorry,
+    saleForm.lorry_capacity_liters,
+    displayedQuantity,
+    displayedUnitPrice,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -362,10 +377,10 @@ export default function WaterManagement({ user }) {
         return
       }
 
-      if (!applicableLorryRate) {
+      if (!['5000', '10000'].includes(String(saleForm.lorry_capacity_liters))) {
         setNotice({
           type: 'error',
-          message: 'No active lorry water rate applies to the selected sale date. Ask the owner to configure one.',
+          message: 'Select a lorry capacity of 5,000 or 10,000 litres.',
         })
         return
       }
@@ -408,6 +423,7 @@ export default function WaterManagement({ user }) {
       if (isLorry) {
         payload.opening_reading = saleForm.opening_reading
         payload.closing_reading = saleForm.closing_reading
+        payload.lorry_capacity_liters = Number(saleForm.lorry_capacity_liters)
       } else {
         payload.quantity = saleForm.quantity
         payload.unit_price = saleForm.unit_price
@@ -1141,19 +1157,22 @@ export default function WaterManagement({ user }) {
                       />
                     </Field>
 
-                    <Field label="Configured lorry rate (KSh/unit)">
-                      <input
-                        type="text"
-                        value={
-                          loadingLorryRates
-                            ? 'Loading rate...'
-                            : applicableLorryRate
-                              ? formatMoney(applicableLorryRate.unit_price)
-                              : 'No applicable rate configured'
+                    <Field label="Lorry capacity and fixed price" required>
+                      <select
+                        value={saleForm.lorry_capacity_liters}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            lorry_capacity_liters: event.target.value,
+                          }))
                         }
-                        className={`${inputClass} bg-slate-50`}
-                        readOnly
-                      />
+                        className={inputClass}
+                        required
+                      >
+                        <option value="">Select lorry capacity</option>
+                        <option value="5000">5,000 litres — KSh 500</option>
+                        <option value="10000">10,000 litres — KSh 1,000</option>
+                      </select>
                     </Field>
                   </>
                 ) : (
@@ -1253,7 +1272,7 @@ export default function WaterManagement({ user }) {
                 </p>
                 <p className="mt-1 text-xs text-blue-700">
                   {isLorry
-                    ? 'Closing reading minus opening reading, multiplied by the configured rate for the sale date.'
+                    ? 'Meter readings are recorded for reference. The charge is fixed by the selected lorry capacity.'
                     : 'Quantity multiplied by unit price.'}
                 </p>
               </div>
@@ -1271,7 +1290,7 @@ export default function WaterManagement({ user }) {
                   disabled={
                     saving ||
                     totalAmount <= 0 ||
-                    (isLorry && (!applicableLorryRate || loadingLorryRates))
+                    (isLorry && !['5000', '10000'].includes(String(saleForm.lorry_capacity_liters)))
                   }
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
