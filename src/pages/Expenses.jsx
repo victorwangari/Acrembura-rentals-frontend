@@ -50,6 +50,7 @@ const today = () => {
 };
 
 const emptyForm = {
+  expense_type: '',
   category: 'Water Supply',
   description: '',
   amount: '',
@@ -176,6 +177,11 @@ export default function Expenses({ user }) {
     setFormError('');
     setNotice('');
 
+    if (!form.expense_type) {
+      setFormError('Please select whether this expense belongs to Rent or Water.');
+      return;
+    }
+
     if (!form.category.trim()) {
       setFormError('Please select an expense category.');
       return;
@@ -204,6 +210,7 @@ export default function Expenses({ user }) {
       await apiRequest('/expenses', {
         method: 'POST',
         body: JSON.stringify({
+          expense_type: form.expense_type,
           category: form.category.trim(),
           description: form.description.trim(),
           amount,
@@ -750,6 +757,26 @@ export default function Expenses({ user }) {
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="expense-type"
+                    className="mb-1.5 block text-sm font-semibold text-slate-700"
+                  >
+                    Expense Type <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    id="expense-type"
+                    required
+                    value={form.expense_type}
+                    onChange={(event) => updateForm('expense_type', event.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  >
+                    <option value="">Select expense type</option>
+                    <option value="rent">Rent</option>
+                    <option value="water">Water</option>
+                  </select>
+                </div>
+
                 <div>
                   <label
                     htmlFor="expense-category"

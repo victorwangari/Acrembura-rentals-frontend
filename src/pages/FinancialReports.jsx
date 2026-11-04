@@ -163,12 +163,30 @@ export default function FinancialReports() {
     const waterSales = numberValue(report.total_water_sales)
     const expenses = numberValue(report.total_expenses)
 
+    const rentPayments = numberValue(report.rent_payments_received)
+    const rentExpenses = numberValue(report.rent_expenses)
+    const netRentIncome = numberValue(report.net_rent_income)
+
+    const waterInvoicePayments = numberValue(
+      report.water_invoice_payments_received
+    )
+    const totalWaterIncome = numberValue(report.total_water_income)
+    const waterExpenses = numberValue(report.water_expenses)
+    const netWaterIncome = numberValue(report.net_water_income)
+
     return {
       totalPaid,
       waterSales,
       expenses,
       totalReceived: totalPaid + waterSales,
       netCashFlow: numberValue(report.net_cash_flow),
+      rentPayments,
+      rentExpenses,
+      netRentIncome,
+      waterInvoicePayments,
+      totalWaterIncome,
+      waterExpenses,
+      netWaterIncome,
     }
   }, [report])
 
@@ -182,10 +200,25 @@ export default function FinancialReports() {
       [],
       ['Metric', 'Amount (KES)'],
       ['Total invoiced', report.total_invoiced],
-      ['Invoice payments received', report.total_paid],
+      [],
+      ['RENT FINANCES', 'Amount (KES)'],
+      ['Rent payments received', report.rent_payments_received],
+      ['Rent expenses', report.rent_expenses],
+      ['Net rent income', report.net_rent_income],
+      [],
+      ['WATER FINANCES', 'Amount (KES)'],
+      ['Water invoice payments received', report.water_invoice_payments_received],
       ['Direct water sales', report.total_water_sales],
+      ['Total water income', report.total_water_income],
+      ['Water expenses', report.water_expenses],
+      ['Net water income', report.net_water_income],
+      [],
+      ['COMBINED FINANCES', 'Amount (KES)'],
+      ['Invoice payments received', report.total_paid],
       ['Total received', metrics.totalReceived.toFixed(2)],
       ['Total expenses', report.total_expenses],
+      ['Unclassified expenses', report.unclassified_expenses],
+      ['Unclassified invoice payments', report.unclassified_invoice_payments],
       ['Net cash flow', report.net_cash_flow],
       ['Outstanding in selected period', report.total_outstanding],
       ['Outstanding across all periods', report.total_outstanding_all_periods],
@@ -397,6 +430,83 @@ export default function FinancialReports() {
               tone={metrics.netCashFlow >= 0 ? 'green' : 'red'}
             />
           </div>
+
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Rent Financial Summary
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Rent payments, rent expenses, and net rent income for the selected period.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <MetricCard
+                title="Rent Payments Received"
+                amount={metrics.rentPayments}
+                description="Rent income received through invoices"
+                icon={Wallet}
+                tone="blue"
+              />
+              <MetricCard
+                title="Rent Expenses"
+                amount={metrics.rentExpenses}
+                description="Expenses classified under rent"
+                icon={TrendingDown}
+                tone="red"
+              />
+              <MetricCard
+                title="Net Rent Income"
+                amount={metrics.netRentIncome}
+                description="Rent payments minus rent expenses"
+                icon={metrics.netRentIncome >= 0 ? ArrowUpRight : ArrowDownRight}
+                tone={metrics.netRentIncome >= 0 ? 'green' : 'red'}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Water Financial Summary
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Water invoice payments, direct sales, water expenses, and net water income.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                title="Water Invoice Payments"
+                amount={metrics.waterInvoicePayments}
+                description="Water payments received through invoices"
+                icon={Wallet}
+                tone="blue"
+              />
+              <MetricCard
+                title="Direct Water Sales"
+                amount={metrics.waterSales}
+                description="Shop and other direct water sales"
+                icon={CircleDollarSign}
+                tone="cyan"
+              />
+              <MetricCard
+                title="Water Expenses"
+                amount={metrics.waterExpenses}
+                description="Expenses classified under water"
+                icon={TrendingDown}
+                tone="red"
+              />
+              <MetricCard
+                title="Net Water Income"
+                amount={metrics.netWaterIncome}
+                description="Total water income minus water expenses"
+                icon={metrics.netWaterIncome >= 0 ? ArrowUpRight : ArrowDownRight}
+                tone={metrics.netWaterIncome >= 0 ? 'green' : 'red'}
+              />
+            </div>
+          </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-5">
