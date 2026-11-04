@@ -360,7 +360,7 @@ function StatusBadge({ status }) {
   )
 }
 
-function DashboardContent({ onNewInvoice }) {
+function DashboardContent({ onNewInvoice, user }) {
   const [period, setPeriod] = useState('Last 6 months')
   const [dashboardData, setDashboardData] = useState(null)
   const [dashboardLoading, setDashboardLoading] = useState(true)
@@ -671,6 +671,7 @@ function DashboardContent({ onNewInvoice }) {
         </div>
       </div>
 
+      {user?.role === 'owner' && (
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Total received"
@@ -708,6 +709,7 @@ function DashboardContent({ onNewInvoice }) {
           tone="orange"
         />
       </section>
+      )}
 
       {dashboardError && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -723,6 +725,7 @@ function DashboardContent({ onNewInvoice }) {
       )}
 
       <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {user?.role === 'owner' && (
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30 sm:p-6 xl:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -868,6 +871,7 @@ function DashboardContent({ onNewInvoice }) {
             </span>
           </div>
         </article>
+        )}
 
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30 sm:p-6">
           <div className="flex items-center justify-between">
@@ -907,6 +911,7 @@ function DashboardContent({ onNewInvoice }) {
               </p>
             </div>
 
+            {user?.role === 'owner' && (
             <div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-slate-600">Rent collection</span>
@@ -930,6 +935,7 @@ function DashboardContent({ onNewInvoice }) {
                 Payments received against invoices
               </p>
             </div>
+            )}
 
             <div>
               <div className="flex items-center justify-between gap-3">
@@ -954,6 +960,7 @@ function DashboardContent({ onNewInvoice }) {
             </div>
           </div>
 
+{user?.role === 'owner' && (
           <div className="mt-7 rounded-xl border border-orange-100 bg-orange-50/70 p-4">
             <div className="flex items-start gap-3">
               <div className="rounded-lg bg-orange-100 p-2 text-orange-600">
@@ -970,10 +977,12 @@ function DashboardContent({ onNewInvoice }) {
               </div>
             </div>
           </div>
-        </article>
+
+          )}        </article>
       </section>
 
       <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+{user?.role === 'owner' && (
         <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30 xl:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
             <div>
@@ -1056,6 +1065,7 @@ function DashboardContent({ onNewInvoice }) {
             </p>
           </div>
         </article>
+        )}
 
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30 sm:p-6">
           <div className="flex items-center justify-between">
@@ -1302,6 +1312,7 @@ function DashboardLayout() {
 
           {activePage === 'Dashboard' ? (
             <DashboardContent
+              user={user}
               onNewInvoice={() => {
                 setActivePage('Billing & Invoices')
                 setInvoiceCreateRequest((count) => count + 1)
