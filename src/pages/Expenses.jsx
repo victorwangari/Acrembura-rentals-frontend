@@ -784,19 +784,16 @@ export default function Expenses({ user }) {
                   >
                     Category <span className="text-rose-500">*</span>
                   </label>
-                  <select
+                  <input
                     id="expense-category"
+                    type="text"
                     required
                     value={form.category}
                     onChange={(event) => updateForm('category', event.target.value)}
+                    placeholder="e.g. Electricity, Water Supply, Internet"
+                    autoComplete="off"
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                  >
-                    {EXPENSE_CATEGORIES.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 <div>
