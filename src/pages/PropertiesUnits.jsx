@@ -359,23 +359,27 @@ export default function PropertiesUnits({ user }) {
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button
-            type="button"
-            onClick={openCreateProperty}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <Building2 size={16} />
-            Add property
-          </button>
-          <button
-            type="button"
-            onClick={openCreateUnit}
-            disabled={!properties.some((property) => property.is_active)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Plus size={17} />
-            Add unit
-          </button>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={openCreateProperty}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Building2 size={16} />
+              Add property
+            </button>
+          )}
+          {isOwner && (
+            <button
+              type="button"
+              onClick={openCreateUnit}
+              disabled={!properties.some((property) => property.is_active)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Plus size={17} />
+              Add unit
+            </button>
+          )}
         </div>
       </section>
 
@@ -544,14 +548,16 @@ export default function PropertiesUnits({ user }) {
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditUnit(unit)}
-                              aria-label={`Edit unit ${unit.unit_number}`}
-                              className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700"
-                            >
-                              <Pencil size={16} />
-                            </button>
+                            {isOwner && (
+                              <button
+                                type="button"
+                                onClick={() => openEditUnit(unit)}
+                                aria-label={`Edit unit ${unit.unit_number}`}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
                             {isOwner && (
                               <select
                                 value={unit.status}
@@ -590,13 +596,15 @@ export default function PropertiesUnits({ user }) {
                         <p className="text-xs text-slate-400">{unit.unit_type || 'Unit'}</p>
                         <p className="mt-1 font-semibold text-slate-800">{formatMoney(unit.monthly_rent)} / month</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openEditUnit(unit)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
-                      >
-                        <Pencil size={14} /> Edit
-                      </button>
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => openEditUnit(unit)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+                        >
+                          <Pencil size={14} /> Edit
+                        </button>
+                      )}
                     </div>
                     {isOwner && (
                       <select
