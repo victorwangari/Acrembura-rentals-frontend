@@ -4,9 +4,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 export async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('acrembura_access_token')
 
+  const isFormData =
+    typeof FormData !== 'undefined' && options.body instanceof FormData
+
   const headers = {
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.body && !isFormData
+      ? { 'Content-Type': 'application/json' }
+      : {}),
     ...options.headers,
+  }
+
+  if (isFormData) {
+    delete headers['Content-Type']
+    delete headers['content-type']
   }
 
   if (token) {

@@ -160,6 +160,8 @@ export default function WaterMeterBilling({ user }) {
     notes: '',
   })
 
+  const [readingPhoto, setReadingPhoto] = useState(null)
+
   const isOwner = user?.role === 'owner'
 
   const loadData = useCallback(async () => {
@@ -391,15 +393,32 @@ export default function WaterMeterBilling({ user }) {
     }
 
     try {
+      const payload = {
+        meter_id: meterId,
+        reading_date: readingForm.reading_date,
+        closing_reading: closing,
+        ...(opening === undefined ? {} : { opening_reading: opening }),
+        notes: readingForm.notes.trim() || null,
+      }
+
+      let body = JSON.stringify(payload)
+
+      if (readingPhoto) {
+        const formData = new FormData()
+
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) {
+            formData.append(key, String(value))
+          }
+        })
+
+        formData.append('meter_photo', readingPhoto)
+        body = formData
+      }
+
       const response = await apiRequest('/meter-readings', {
         method: 'POST',
-        body: JSON.stringify({
-          meter_id: meterId,
-          reading_date: readingForm.reading_date,
-          closing_reading: closing,
-          ...(opening === undefined ? {} : { opening_reading: opening }),
-          notes: readingForm.notes.trim() || null,
-        }),
+        body,
       })
 
       const result = response.data || {}
@@ -429,6 +448,7 @@ export default function WaterMeterBilling({ user }) {
         closing_reading: '',
         notes: '',
       })
+      setReadingPhoto(null)
       setReadingFormOpen(false)
       await loadData()
     } catch (error) {
@@ -904,7 +924,42 @@ export default function WaterMeterBilling({ user }) {
             <Field label="Closing reading">
               <input type="number" min="0" step="any" required className={inputClass} value={readingForm.closing_reading} onChange={(event) => setReadingForm((prev) => ({ ...prev, closing_reading: event.target.value }))} />
             </Field>
-            <Field label="Notes">
+            {selectedConnection?.water_customer && (
+        <Field label="Meter photo (external customers only)">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className={inputClass}
+            onChange={(event) => {
+              const file = event.target.files?.[0] || null
+
+              if (file && file.size > 5 * 1024 * 1024) {
+                setReadingPhoto(null)
+                event.target.value = ''
+                setNotice({
+                  type: 'error',
+                  message: 'Meter photos must not exceed 5 MB.',
+                })
+                return
+              }
+
+              setReadingPhoto(file)
+              setNotice(null)
+            }}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Optional. Upload a clear JPEG, PNG, or WebP image of the meter.
+            Maximum size: 5 MB.
+          </p>
+          {readingPhoto && (
+            <p className="mt-1 text-sm text-blue-700">
+              Selected: {readingPhoto.name}
+            </p>
+          )}
+        </Field>
+      )}
+
+      <Field label="Notes">
               <textarea rows={3} className={inputClass} value={readingForm.notes} onChange={(event) => setReadingForm((prev) => ({ ...prev, notes: event.target.value }))} placeholder="Optional notes about this reading" />
             </Field>
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
