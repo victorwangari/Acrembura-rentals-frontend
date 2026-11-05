@@ -856,7 +856,7 @@ export default function WaterManagement({ user }) {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                        {formatDate(sale.sale_date)}
+                        {formatDate(sale.created_at || sale.sale_date)}
                       </td>
                       <td className="px-5 py-4">
                         <span
