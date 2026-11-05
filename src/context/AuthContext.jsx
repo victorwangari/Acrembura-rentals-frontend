@@ -12,6 +12,7 @@ import { apiRequest } from '../api/client'
 const AuthContext = createContext(null)
 
 const TOKEN_KEY = 'acrembura_access_token'
+const REFRESH_TOKEN_KEY = 'acrembura_refresh_token'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -19,6 +20,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
     setUser(null)
   }, [])
 
@@ -28,14 +30,18 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email, password }),
     })
 
-    const { access_token: accessToken, user: authenticatedUser } =
-      result.data
+    const {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: authenticatedUser,
+    } = result.data
 
-    if (!accessToken || !authenticatedUser) {
+    if (!accessToken || !refreshToken || !authenticatedUser) {
       throw new Error('The server returned incomplete login details.')
     }
 
     localStorage.setItem(TOKEN_KEY, accessToken)
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
     setUser(authenticatedUser)
 
     return authenticatedUser
@@ -47,7 +53,7 @@ export function AuthProvider({ children }) {
     async function restoreSession() {
       const token = localStorage.getItem(TOKEN_KEY)
 
-      if (!token) {
+      if (!token && !localStorage.getItem(REFRESH_TOKEN_KEY)) {
         if (active) setLoading(false)
         return
       }
@@ -58,6 +64,7 @@ export function AuthProvider({ children }) {
         if (active) setUser(result.data)
       } catch {
         localStorage.removeItem(TOKEN_KEY)
+        localStorage.removeItem(REFRESH_TOKEN_KEY)
 
         if (active) setUser(null)
       } finally {
