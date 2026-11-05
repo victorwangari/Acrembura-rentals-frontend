@@ -865,11 +865,18 @@ export default function WaterManagement({ user }) {
                               : 'bg-orange-50 text-orange-700'
                             }`}
                         >
-                          {sale.sale_type === 'lorry' ? 'Lorry' : 'Shop'}
+                          {sale.sale_type === 'lorry' ? 'Lorry' : 'Jerrycan'}
                         </span>
                         <p className="mt-1.5 font-medium text-slate-800">
                           {sale.customer_name || 'Walk-in customer'}
                         </p>
+                        {sale.sale_type === 'lorry' && (
+                          <p className="mt-1 text-xs font-semibold text-violet-700">
+                            {sale.lorry_sale_point
+                              ? `Meter Point ${sale.lorry_sale_point}`
+                              : 'Meter point not assigned'}
+                          </p>
+                        )}
                         {sale.lorry_registration_number && (
                           <p className="mt-1 text-xs text-slate-500">
                             {sale.lorry_registration_number}
@@ -877,12 +884,22 @@ export default function WaterManagement({ user }) {
                         )}
                       </td>
                       <td className="px-5 py-4 text-slate-700">
-                        {formatQuantity(sale.quantity)}
-                        {sale.sale_type === 'lorry' &&
-                          sale.opening_reading != null &&
+                        <span className="font-semibold">
+                          {formatQuantity(
+                            Number(sale.quantity || 0) *
+                              (sale.sale_type === 'lorry' ? 1000 : 1)
+                          )} L
+                        </span>
+                        {sale.opening_reading != null &&
                           sale.closing_reading != null && (
                             <p className="mt-1 whitespace-nowrap text-xs text-slate-500">
-                              Meter: {formatQuantity(sale.opening_reading)} → {formatQuantity(sale.closing_reading)}
+                              Opening: {formatQuantity(sale.opening_reading)} m³
+                            </p>
+                          )}
+                        {sale.opening_reading != null &&
+                          sale.closing_reading != null && (
+                            <p className="mt-1 whitespace-nowrap text-xs text-slate-500">
+                              Closing: {formatQuantity(sale.closing_reading)} m³
                             </p>
                           )}
                       </td>
