@@ -32,6 +32,7 @@ const emptySale = {
   sale_date: today(),
   customer_name: '',
   lorry_registration_number: '',
+  lorry_sale_point: '',
   lorry_capacity_liters: '',
   opening_reading: '',
   closing_reading: '',
@@ -375,6 +376,14 @@ export default function WaterManagement({ user }) {
         return
       }
 
+      if (!['A', 'B'].includes(saleForm.lorry_sale_point)) {
+        setNotice({
+          type: 'error',
+          message: 'Select Lorry Sale Point A or B.',
+        })
+        return
+      }
+
       if (!['5000', '10000'].includes(String(saleForm.lorry_capacity_liters))) {
         setNotice({
           type: 'error',
@@ -440,6 +449,7 @@ export default function WaterManagement({ user }) {
       }
 
       if (isLorry) {
+        payload.lorry_sale_point = saleForm.lorry_sale_point
         payload.opening_reading = saleForm.opening_reading
         payload.closing_reading = saleForm.closing_reading
         payload.lorry_capacity_liters = Number(saleForm.lorry_capacity_liters)
@@ -1073,6 +1083,10 @@ export default function WaterManagement({ user }) {
                         event.target.value === 'lorry'
                           ? previous.lorry_registration_number
                           : '',
+                      lorry_sale_point:
+                        event.target.value === 'lorry'
+                          ? previous.lorry_sale_point
+                          : '',
                     }))
                   }
                   className={inputClass}
@@ -1112,6 +1126,26 @@ export default function WaterManagement({ user }) {
                     placeholder="Customer or business name"
                   />
                 </Field>
+
+                {isLorry && (
+                  <Field label="Lorry sale point" required>
+                    <select
+                      value={saleForm.lorry_sale_point}
+                      onChange={(event) =>
+                        setSaleForm((previous) => ({
+                          ...previous,
+                          lorry_sale_point: event.target.value,
+                        }))
+                      }
+                      className={inputClass}
+                      required
+                    >
+                      <option value="">Select lorry sale point</option>
+                      <option value="A">Lorry Sale Point A</option>
+                      <option value="B">Lorry Sale Point B</option>
+                    </select>
+                  </Field>
+                )}
 
                 {isLorry && (
                   <Field label="Lorry registration number" required>
