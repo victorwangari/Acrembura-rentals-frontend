@@ -647,23 +647,26 @@ export default function WaterManagement({ user }) {
           tone="green"
         />
         <MetricCard
-          title="Water sold today"
-          value={`${formatQuantity(summary?.total_quantity)} units`}
-          subtitle="Total quantity recorded"
+          title="Total water sold"
+          value={`${formatQuantity(
+            Number(summary?.by_type?.shop?.quantity || 0) / 1000 +
+            Number(summary?.by_type?.lorry?.quantity || 0)
+          )} m³`}
+          subtitle="Jerrycan and lorry sales"
           icon={Droplets}
           tone="blue"
         />
         <MetricCard
-          title="Jerican sales"
+          title="Jerrycan sales"
           value={formatMoney(summary?.by_type?.shop?.total_sales)}
-          subtitle={`${formatQuantity(summary?.by_type?.shop?.quantity)} units`}
+          subtitle={`${formatQuantity(Number(summary?.by_type?.shop?.quantity || 0) / 1000)} m³ sold`}
           icon={ShoppingBag}
           tone="orange"
         />
         <MetricCard
           title="Lorry sales"
           value={formatMoney(summary?.by_type?.lorry?.total_sales)}
-          subtitle={`${formatQuantity(summary?.by_type?.lorry?.quantity)} units`}
+          subtitle={`${formatQuantity(summary?.by_type?.lorry?.quantity)} m³ sold`}
           icon={Truck}
           tone="purple"
         />
@@ -673,35 +676,35 @@ export default function WaterManagement({ user }) {
         <div className="mb-4">
           <h2 className="font-bold text-slate-900">Water meter consumption</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Total water measured by the meters for the selected period, in cubic metres (m³).
+            Meter consumption for the selected period, displayed in litres and cubic metres.
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Total water consumed"
-            value={`${formatQuantity(summary?.meter_consumption?.total_m3)} m³`}
-            subtitle="All recorded meter points"
+            value={`${formatQuantity(Number(summary?.meter_consumption?.total_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.total_m3)} m³)`}
+            subtitle="Combined meter consumption"
             icon={Droplets}
             tone="blue"
           />
           <MetricCard
             title="Jerrycan meter"
-            value={`${formatQuantity(summary?.meter_consumption?.jerrycan_meter_m3)} m³`}
-            subtitle="Shop / jerrycan sales"
+            value={`${formatQuantity(Number(summary?.meter_consumption?.jerrycan_meter_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.jerrycan_meter_m3)} m³)`}
+            subtitle="Jerrycan meter"
             icon={ShoppingBag}
             tone="orange"
           />
           <MetricCard
             title="Lorry Point A"
-            value={`${formatQuantity(summary?.meter_consumption?.lorry_point_a_m3)} m³`}
+            value={`${formatQuantity(Number(summary?.meter_consumption?.lorry_point_a_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.lorry_point_a_m3)} m³)`}
             subtitle="Lorry meter A"
             icon={Truck}
             tone="purple"
           />
           <MetricCard
             title="Lorry Point B"
-            value={`${formatQuantity(summary?.meter_consumption?.lorry_point_b_m3)} m³`}
+            value={`${formatQuantity(Number(summary?.meter_consumption?.lorry_point_b_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.lorry_point_b_m3)} m³)`}
             subtitle="Lorry meter B"
             icon={Truck}
             tone="green"
@@ -713,7 +716,8 @@ export default function WaterManagement({ user }) {
             Historical lorry readings without an assigned meter point:
             {' '}
             <strong>
-              {formatQuantity(summary.meter_consumption.lorry_unassigned_m3)} m³
+              {formatQuantity(Number(summary.meter_consumption.lorry_unassigned_m3) * 1000)} L
+              ({formatQuantity(summary.meter_consumption.lorry_unassigned_m3)} m³)
             </strong>
             . These are included in total consumption.
           </p>
