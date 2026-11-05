@@ -682,7 +682,7 @@ export default function WaterMeterBilling({ user }) {
         <div className="space-y-5">
           <Panel
             title="Water connections"
-            description="Create a connection for one active tenant or external water customer."
+            description="Create a connection for one active tenant or home connection customer."
             action={
               <button type="button" onClick={() => setConnectionFormOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
                 <Plus size={16} /> Add connection
@@ -762,7 +762,7 @@ export default function WaterMeterBilling({ user }) {
               <select className={inputClass} value={invoiceOwner} onChange={(event) => setInvoiceOwner(event.target.value)}>
                 <option value="all">All customers</option>
                 <option value="tenant">Tenants</option>
-                <option value="external">External customers</option>
+                <option value="external">Home Connection Customers</option>
               </select>
             </Field>
             <Field label="Invoice status">
@@ -810,10 +810,10 @@ export default function WaterMeterBilling({ user }) {
             <Field label="Customer type">
               <select className={inputClass} value={connectionForm.owner_type} onChange={(event) => setConnectionForm((prev) => ({ ...prev, owner_type: event.target.value, owner_id: '' }))}>
                 <option value="tenant">Tenant</option>
-                <option value="external">External water customer</option>
+                <option value="external">Home Connection Customer</option>
               </select>
             </Field>
-            <Field label={connectionForm.owner_type === 'tenant' ? 'Active tenant' : 'Active external customer'}>
+            <Field label={connectionForm.owner_type === 'tenant' ? 'Active tenant' : 'Active Home Connection Customer'}>
               <select className={inputClass} required value={connectionForm.owner_id} onChange={(event) => setConnectionForm((prev) => ({ ...prev, owner_id: event.target.value }))}>
                 <option value="">Select customer</option>
                 {(connectionForm.owner_type === 'tenant' ? eligibleTenants : eligibleCustomers).map((customer) => (
@@ -822,7 +822,7 @@ export default function WaterMeterBilling({ user }) {
               </select>
               {(connectionForm.owner_type === 'tenant' ? eligibleTenants : eligibleCustomers).length === 0 && (
                 <span className="mt-1 block text-xs text-amber-700">
-                  {connectionForm.owner_type === 'tenant' ? 'No active tenants found.' : 'Register the external customer in the Water Customers tab first.'}
+                  {connectionForm.owner_type === 'tenant' ? 'No active tenants found.' : 'Register the home connection customer in the Water Customers tab first.'}
                 </span>
               )}
             </Field>
@@ -925,7 +925,7 @@ export default function WaterMeterBilling({ user }) {
               <input type="number" min="0" step="any" required className={inputClass} value={readingForm.closing_reading} onChange={(event) => setReadingForm((prev) => ({ ...prev, closing_reading: event.target.value }))} />
             </Field>
             {selectedConnection?.water_customer && (
-        <Field label="Meter photo (external customers only)">
+        <Field label="Meter photo (home connection customers only)">
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp"

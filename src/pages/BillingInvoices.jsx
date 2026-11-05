@@ -789,7 +789,7 @@ export default function BillingInvoices({ openCreateRequest = 0 }) {
                         >
                             <option value="all">All customers</option>
                             <option value="tenant">Tenants</option>
-                            <option value="water_customer">External water customers</option>
+                            <option value="water_customer">Home Connection Customers</option>
                         </select>
                     </label>
                 </div>
@@ -857,7 +857,7 @@ export default function BillingInvoices({ openCreateRequest = 0 }) {
                                             <td className="px-5 py-4">
                                                 <p className="text-xs font-semibold text-slate-700">{getCustomer(invoice)}</p>
                                                 <p className="mt-1 text-[11px] text-slate-400">
-                                                    {invoice.tenant_id != null ? 'Tenant' : 'External water customer'}
+                                                    {invoice.tenant_id != null ? 'Tenant' : 'Home Connection Customer'}
                                                 </p>
                                             </td>
                                             <td className="px-5 py-4 text-xs text-slate-600">
@@ -969,7 +969,7 @@ export default function BillingInvoices({ openCreateRequest = 0 }) {
             {modal?.type === 'create' && (
                 <Modal
                     title="Create invoice"
-                    subtitle="Create a draft invoice for one active tenant or external water customer."
+                    subtitle="Create a draft invoice for one active tenant or home connection customer."
                     onClose={closeModal}
                 >
                     <form onSubmit={createInvoice} className="space-y-4">
@@ -985,7 +985,7 @@ export default function BillingInvoices({ openCreateRequest = 0 }) {
                                 className={inputClass}
                             >
                                 <option value="tenant">Tenant</option>
-                                <option value="water_customer">External water customer</option>
+                                <option value="water_customer">Home Connection Customer</option>
                             </select>
                         </Field>
                         <Field label="Customer">

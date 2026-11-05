@@ -15,7 +15,7 @@ import { apiRequest } from '../api/client'
 
 const CUSTOMER_TYPES = [
   { value: 'tenant', label: 'Rental tenants' },
-  { value: 'external', label: 'External water customers' },
+  { value: 'external', label: 'Home Connection Customers' },
   { value: 'shop', label: 'Shop sales' },
   { value: 'lorry', label: 'Water lorries' },
 ]

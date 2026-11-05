@@ -169,6 +169,7 @@ export default function WaterManagement({ user }) {
   const [search, setSearch] = useState('')
   const [saleForm, setSaleForm] = useState(emptySale)
   const [customerForm, setCustomerForm] = useState(emptyCustomer)
+  const [editingCustomer, setEditingCustomer] = useState(null)
   const [showSaleForm, setShowSaleForm] = useState(false)
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -527,28 +528,50 @@ export default function WaterManagement({ user }) {
     }
   }
 
+  function openCustomerForm(customer = null) {
+    setEditingCustomer(customer)
+    setCustomerForm(customer ? {
+      full_name: customer.full_name || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      address: customer.address || '',
+    } : emptyCustomer)
+    setNotice(null)
+    setShowCustomerForm(true)
+  }
+
   async function handleCustomerSubmit(event) {
     event.preventDefault()
     setNotice(null)
     setSaving(true)
 
     try {
-      const response = await apiRequest('/water-customers', {
-        method: 'POST',
-        body: JSON.stringify({
-          full_name: customerForm.full_name.trim(),
-          phone: customerForm.phone.trim() || null,
-          email: customerForm.email.trim() || null,
-          address: customerForm.address.trim() || null,
-          customer_type: 'external',
-        }),
-      })
+      const payload = {
+        full_name: customerForm.full_name.trim(),
+        phone: customerForm.phone.trim() || null,
+        email: customerForm.email.trim() || null,
+        address: customerForm.address.trim() || null,
+      }
+
+      const response = await apiRequest(
+        editingCustomer
+          ? `/water-customers/${editingCustomer.id}`
+          : '/water-customers',
+        {
+          method: editingCustomer ? 'PUT' : 'POST',
+          body: JSON.stringify({
+            ...payload,
+            ...(editingCustomer ? {} : { customer_type: 'external' }),
+          }),
+        },
+      )
 
       setNotice({
         type: 'success',
         message: response.message,
       })
       setCustomerForm(emptyCustomer)
+      setEditingCustomer(null)
       setShowCustomerForm(false)
       await loadCustomers()
     } catch (error) {
@@ -612,7 +635,7 @@ export default function WaterManagement({ user }) {
             Water Management
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Record shop and lorry sales, manage external customers, and monitor daily water revenue.
+            Record shop and lorry sales, manage home connection customers, and monitor daily water revenue.
           </p>
         </div>
         {tab !== 'rates' && (
@@ -1075,9 +1098,9 @@ export default function WaterManagement({ user }) {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col justify-between gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5">
             <div>
-              <h2 className="font-bold text-slate-900">External water customers</h2>
+              <h2 className="font-bold text-slate-900">Home Connection Customers</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Manage people who receive water outside the rental properties.
+                Manage customers who receive water through home connections.
               </p>
             </div>
             <Field label="Customer status">
@@ -1118,11 +1141,11 @@ export default function WaterManagement({ user }) {
               <Users size={28} className="mx-auto text-slate-300" />
               <h3 className="mt-3 font-semibold text-slate-800">No customers found</h3>
               <p className="mt-1 text-sm text-slate-500">
-                Register an external water customer to get started.
+                Register a home connection customer to get started.
               </p>
               <button
                 type="button"
-                onClick={() => setShowCustomerForm(true)}
+                onClick={() => openCustomerForm()}
                 className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
               >
                 Add customer
@@ -1165,15 +1188,24 @@ export default function WaterManagement({ user }) {
                     <p>{customer.address || 'No address provided'}</p>
                   </div>
 
-                  {isOwner && (
+                  <div className="mt-4 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => changeCustomerStatus(customer)}
-                      className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      onClick={() => openCustomerForm(customer)}
+                      className="flex-1 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
                     >
-                      {customer.status === 'active' ? 'Deactivate customer' : 'Reactivate customer'}
+                      Edit
                     </button>
-                  )}
+                    {isOwner && (
+                      <button
+                        type="button"
+                        onClick={() => changeCustomerStatus(customer)}
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        {customer.status === 'active' ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -1585,15 +1617,15 @@ export default function WaterManagement({ user }) {
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
               <div>
                 <h2 id="customer-dialog-title" className="text-lg font-bold text-slate-900">
-                  Register water customer
+                  {editingCustomer ? 'Edit Home Connection Customer' : 'Register Home Connection Customer'}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Add an external customer who receives water.
+                  {editingCustomer ? 'Update the home connection customer details.' : 'Add a home connection customer who receives water.'}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCustomerForm(false)}
+                onClick={() => { setShowCustomerForm(false); setEditingCustomer(null); setCustomerForm(emptyCustomer); }}
                 className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
                 aria-label="Close customer form"
               >
@@ -1666,7 +1698,7 @@ export default function WaterManagement({ user }) {
               <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowCustomerForm(false)}
+                  onClick={() => { setShowCustomerForm(false); setEditingCustomer(null); setCustomerForm(emptyCustomer); }}
                   className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
@@ -1677,7 +1709,7 @@ export default function WaterManagement({ user }) {
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving && <LoaderCircle size={17} className="animate-spin" />}
-                  {saving ? 'Saving customer...' : 'Register customer'}
+                  {saving ? 'Saving customer...' : editingCustomer ? 'Save Changes' : 'Register Customer'}
                 </button>
               </div>
             </form>
