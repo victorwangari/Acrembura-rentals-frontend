@@ -29,18 +29,12 @@ export default function Login() {
     <main className="flex min-h-screen bg-white">
       <section className="flex w-full items-center justify-center px-6 py-12 sm:px-10 lg:w-1/2">
         <div className="w-full max-w-md">
-          <div className="mb-10 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
-              <Droplets size={27} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                AcreMbura
-              </h1>
-              <p className="mt-0.5 text-[10px] font-semibold tracking-[0.18em] text-slate-500">
-                WATER & RENTALS
-              </p>
-            </div>
+          <div className="mb-10">
+            <img
+              src="/acrembura-logo.png"
+              alt="AcreMbura Water Services"
+              className="h-32 w-40 object-contain"
+            />
           </div>
 
           <p className="text-sm font-semibold text-blue-600">

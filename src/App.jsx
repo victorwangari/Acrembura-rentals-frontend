@@ -164,17 +164,12 @@ function Sidebar({
           }`}
       >
         {/* Fixed brand header */}
-        <div className="flex h-[84px] shrink-0 items-center gap-3 border-b border-white/10 px-5">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-500 shadow-lg shadow-blue-950/30">
-            <Droplets size={25} strokeWidth={2.2} />
-          </div>
-
-          <div className="min-w-0">
-            <p className="text-lg font-bold tracking-tight">AcreMbura</p>
-            <p className="mt-0.5 text-[11px] tracking-[0.15em] text-slate-400">
-              WATER & RENTALS
-            </p>
-          </div>
+        <div className="flex h-[100px] shrink-0 items-center justify-between border-b border-white/10 px-4">
+          <img
+            src="/acrembura-logo.png"
+            alt="AcreMbura Water Services"
+            className="h-[88px] w-[108px] object-contain"
+          />
 
           <button
             type="button"
