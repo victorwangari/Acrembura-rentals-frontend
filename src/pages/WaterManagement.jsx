@@ -77,6 +77,7 @@ function formatDate(value) {
     : date.toLocaleString('en-KE', {
       dateStyle: 'medium',
       timeStyle: 'short',
+      timeZone: 'Africa/Nairobi',
     })
 }
 
