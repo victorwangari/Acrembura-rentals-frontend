@@ -35,6 +35,8 @@ const emptySale = {
   lorry_capacity_liters: '',
   opening_reading: '',
   closing_reading: '',
+  standard_jerrycans: '',
+  custom_jerrycan_liters: '',
   quantity: '',
   unit_price: '',
   payment_method: 'cash',
@@ -209,9 +211,15 @@ export default function WaterManagement({ user }) {
       : 0
   }, [saleForm.opening_reading, saleForm.closing_reading])
 
+  const standardJerrycans = Number(saleForm.standard_jerrycans || 0)
+  const customJerrycanLiters = Number(saleForm.custom_jerrycan_liters || 0)
+
+  const jerrycanQuantity =
+    standardJerrycans * 20 + customJerrycanLiters
+
   const displayedQuantity = isLorry
     ? lorryQuantity
-    : Number(saleForm.quantity || 0)
+    : jerrycanQuantity
 
   const fixedLorryPrices = {
     5000: 500,
@@ -220,29 +228,19 @@ export default function WaterManagement({ user }) {
 
   const displayedUnitPrice = isLorry
     ? Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
-    : Number(saleForm.unit_price || 0)
+    : 0.25
 
   const totalAmount = useMemo(() => {
     if (isLorry) {
       return Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
     }
 
-    if (
-      !Number.isFinite(displayedQuantity) ||
-      !Number.isFinite(displayedUnitPrice) ||
-      displayedQuantity <= 0 ||
-      displayedUnitPrice <= 0
-    ) {
+    if (!Number.isFinite(displayedQuantity) || displayedQuantity <= 0) {
       return 0
     }
 
-    return displayedQuantity * displayedUnitPrice
-  }, [
-    isLorry,
-    saleForm.lorry_capacity_liters,
-    displayedQuantity,
-    displayedUnitPrice,
-  ])
+    return Number((displayedQuantity * 0.25).toFixed(2))
+  }, [isLorry, saleForm.lorry_capacity_liters, displayedQuantity])
 
   useEffect(() => {
     let cancelled = false
@@ -392,19 +390,40 @@ export default function WaterManagement({ user }) {
         })
         return
       }
-    } else if (
-      saleForm.quantity === '' ||
-      saleForm.unit_price === '' ||
-      !Number.isFinite(Number(saleForm.quantity)) ||
-      !Number.isFinite(Number(saleForm.unit_price)) ||
-      Number(saleForm.quantity) <= 0 ||
-      Number(saleForm.unit_price) <= 0
-    ) {
-      setNotice({
-        type: 'error',
-        message: 'Quantity and unit price must both be greater than zero.',
-      })
-      return
+    } else {
+      const opening = Number(saleForm.opening_reading)
+      const closing = Number(saleForm.closing_reading)
+      const standard = Number(saleForm.standard_jerrycans || 0)
+      const customLiters = Number(saleForm.custom_jerrycan_liters || 0)
+
+      if (
+        saleForm.opening_reading === '' ||
+        saleForm.closing_reading === '' ||
+        !Number.isFinite(opening) ||
+        !Number.isFinite(closing) ||
+        opening < 0 ||
+        closing <= opening
+      ) {
+        setNotice({
+          type: 'error',
+          message: 'Enter valid meter readings. Closing reading must be greater than opening reading.',
+        })
+        return
+      }
+
+      if (
+        !Number.isInteger(standard) ||
+        standard < 0 ||
+        !Number.isFinite(customLiters) ||
+        customLiters < 0 ||
+        standard * 20 + customLiters <= 0
+      ) {
+        setNotice({
+          type: 'error',
+          message: 'Enter a valid standard jerrycan count or customized jerrycan litres.',
+        })
+        return
+      }
     }
 
     setSaving(true)
@@ -425,8 +444,10 @@ export default function WaterManagement({ user }) {
         payload.closing_reading = saleForm.closing_reading
         payload.lorry_capacity_liters = Number(saleForm.lorry_capacity_liters)
       } else {
-        payload.quantity = saleForm.quantity
-        payload.unit_price = saleForm.unit_price
+        payload.opening_reading = saleForm.opening_reading
+        payload.closing_reading = saleForm.closing_reading
+        payload.standard_jerrycans = Number(saleForm.standard_jerrycans || 0)
+        payload.custom_jerrycan_liters = Number(saleForm.custom_jerrycan_liters || 0)
       }
 
       const response = await apiRequest('/water-sales', {
@@ -1177,39 +1198,105 @@ export default function WaterManagement({ user }) {
                   </>
                 ) : (
                   <>
-                    <Field label="Quantity (units)" required>
+                    <Field label="Opening meter reading (m³)" required>
                       <input
                         type="number"
-                        min="0.001"
+                        min="0"
                         step="0.001"
-                        value={saleForm.quantity}
+                        value={saleForm.opening_reading}
                         onChange={(event) =>
                           setSaleForm((previous) => ({
                             ...previous,
-                            quantity: event.target.value,
+                            opening_reading: event.target.value,
                           }))
                         }
                         className={inputClass}
-                        placeholder="e.g. 5"
+                        placeholder="Enter opening reading"
                         required
                       />
                     </Field>
 
-                    <Field label="Unit price (KSh)" required>
+                    <Field label="Closing meter reading (m³)" required>
                       <input
                         type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={saleForm.unit_price}
+                        min="0"
+                        step="0.001"
+                        value={saleForm.closing_reading}
                         onChange={(event) =>
                           setSaleForm((previous) => ({
                             ...previous,
-                            unit_price: event.target.value,
+                            closing_reading: event.target.value,
                           }))
                         }
                         className={inputClass}
-                        placeholder="e.g. 100"
+                        placeholder="Enter closing reading"
                         required
+                      />
+                    </Field>
+
+                    <Field label="Meter consumption (m³)">
+                      <input
+                        value={lorryQuantity.toFixed(3)}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Meter consumption (litres)">
+                      <input
+                        value={(lorryQuantity * 1000).toFixed(0)}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Standard jerrycans (20 litres each)">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={saleForm.standard_jerrycans}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            standard_jerrycans: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="e.g. 3"
+                      />
+                    </Field>
+
+                    <Field label="Customized jerrycans (combined litres)">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={saleForm.custom_jerrycan_liters}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            custom_jerrycan_liters: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="e.g. 60 for two 30L cans"
+                      />
+                    </Field>
+
+                    <Field label="Total jerrycan litres sold">
+                      <input
+                        value={jerrycanQuantity.toFixed(3)}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Price per litre">
+                      <input
+                        value="KSh 0.25"
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
                       />
                     </Field>
                   </>
@@ -1273,7 +1360,7 @@ export default function WaterManagement({ user }) {
                 <p className="mt-1 text-xs text-blue-700">
                   {isLorry
                     ? 'Meter readings are recorded for reference. The charge is fixed by the selected lorry capacity.'
-                    : 'Quantity multiplied by unit price.'}
+                    : 'Total jerrycan litres × KSh 0.25 per litre.'}
                 </p>
               </div>
 
