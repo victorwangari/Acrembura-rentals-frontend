@@ -158,7 +158,9 @@ export default function WaterManagement({ user }) {
   const [lorryRates, setLorryRates] = useState([])
   const [loadingLorryRates, setLoadingLorryRates] = useState(false)
   const [summary, setSummary] = useState(null)
-  const [summaryDate, setSummaryDate] = useState(today())
+  const [summaryPeriod, setSummaryPeriod] = useState('today')
+  const [customSummaryStart, setCustomSummaryStart] = useState(today())
+  const [customSummaryEnd, setCustomSummaryEnd] = useState(today())
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [saleTypeFilter, setSaleTypeFilter] = useState('')
@@ -319,12 +321,57 @@ export default function WaterManagement({ user }) {
   }, [customerStatusFilter])
 
   const loadSummary = useCallback(async () => {
-    if (!summaryDate) return
+    const now = new Date()
+    const toLocalDate = (date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    let start = end
+
+    if (summaryPeriod === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else if (summaryPeriod === 'three_months') {
+      start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    } else if (summaryPeriod === 'custom') {
+      if (!customSummaryStart || !customSummaryEnd) return
+      if (customSummaryStart > customSummaryEnd) {
+        setNotice({
+          type: 'error',
+          message: 'The start date cannot be later than the end date.',
+        })
+        return
+      }
+      start = new Date(`${customSummaryStart}T00:00:00`)
+      const customEnd = customSummaryEnd
+      setLoadingSummary(true)
+      try {
+        const params = new URLSearchParams({
+          start_date: customSummaryStart,
+          end_date: customEnd,
+        })
+        const response = await apiRequest(`/water-sales/summary?${params}`)
+        setSummary(response.data)
+      } catch (error) {
+        setSummary(null)
+        setNotice({ type: 'error', message: error.message })
+      } finally {
+        setLoadingSummary(false)
+      }
+      return
+    }
+
+    const params = new URLSearchParams({
+      start_date: toLocalDate(start),
+      end_date: toLocalDate(end),
+    })
+
     setLoadingSummary(true)
     try {
-      const response = await apiRequest(
-        `/water-sales/summary?date=${encodeURIComponent(summaryDate)}`,
-      )
+      const response = await apiRequest(`/water-sales/summary?${params}`)
       setSummary(response.data)
     } catch (error) {
       setSummary(null)
@@ -332,7 +379,7 @@ export default function WaterManagement({ user }) {
     } finally {
       setLoadingSummary(false)
     }
-  }, [summaryDate])
+  }, [summaryPeriod, customSummaryStart, customSummaryEnd])
 
   useEffect(() => {
     loadSales()
@@ -590,7 +637,12 @@ export default function WaterManagement({ user }) {
         <MetricCard
           title="Today's revenue"
           value={formatMoney(summary?.total_sales)}
-          subtitle={summaryDate}
+          subtitle={
+            summaryPeriod === 'today' ? 'Today'
+              : summaryPeriod === 'month' ? 'This Month'
+                : summaryPeriod === 'three_months' ? 'Last 3 Months'
+                  : 'Custom Date Range'
+          }
           icon={Banknote}
           tone="green"
         />
@@ -618,6 +670,57 @@ export default function WaterManagement({ user }) {
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="mb-4">
+          <h2 className="font-bold text-slate-900">Water meter consumption</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Total water measured by the meters for the selected period, in cubic metres (m³).
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            title="Total water consumed"
+            value={`${formatQuantity(summary?.meter_consumption?.total_m3)} m³`}
+            subtitle="All recorded meter points"
+            icon={Droplets}
+            tone="blue"
+          />
+          <MetricCard
+            title="Jerrycan meter"
+            value={`${formatQuantity(summary?.meter_consumption?.jerrycan_meter_m3)} m³`}
+            subtitle="Shop / jerrycan sales"
+            icon={ShoppingBag}
+            tone="orange"
+          />
+          <MetricCard
+            title="Lorry Point A"
+            value={`${formatQuantity(summary?.meter_consumption?.lorry_point_a_m3)} m³`}
+            subtitle="Lorry meter A"
+            icon={Truck}
+            tone="purple"
+          />
+          <MetricCard
+            title="Lorry Point B"
+            value={`${formatQuantity(summary?.meter_consumption?.lorry_point_b_m3)} m³`}
+            subtitle="Lorry meter B"
+            icon={Truck}
+            tone="green"
+          />
+        </div>
+
+        {Number(summary?.meter_consumption?.lorry_unassigned_m3 || 0) > 0 && (
+          <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            Historical lorry readings without an assigned meter point:
+            {' '}
+            <strong>
+              {formatQuantity(summary.meter_consumption.lorry_unassigned_m3)} m³
+            </strong>
+            . These are included in total consumption.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h2 className="font-bold text-slate-900">Daily sales summary</h2>
@@ -625,15 +728,40 @@ export default function WaterManagement({ user }) {
               Sales totals grouped by payment method.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <CalendarDays size={18} className="text-slate-400" />
-            <input
-              type="date"
-              value={summaryDate}
-              onChange={setSummaryDate}
+            <select
+              value={summaryPeriod}
+              onChange={(event) => setSummaryPeriod(event.target.value)}
               className={inputClass}
-              aria-label="Summary date"
-            />
+              aria-label="Summary period"
+            >
+              <option value="today">Today</option>
+              <option value="month">This Month</option>
+              <option value="three_months">Last 3 Months</option>
+              <option value="custom">Custom Range</option>
+            </select>
+
+            {summaryPeriod === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={customSummaryStart}
+                  onChange={(event) => setCustomSummaryStart(event.target.value)}
+                  className={inputClass}
+                  aria-label="Start date"
+                />
+                <input
+                  type="date"
+                  value={customSummaryEnd}
+                  min={customSummaryStart}
+                  onChange={(event) => setCustomSummaryEnd(event.target.value)}
+                  className={inputClass}
+                  aria-label="End date"
+                />
+              </>
+            )}
+
             <button
               type="button"
               onClick={loadSummary}
