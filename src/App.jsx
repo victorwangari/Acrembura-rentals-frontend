@@ -363,6 +363,10 @@ function DashboardContent({ onNewInvoice, user }) {
   const [recentTransactions, setRecentTransactions] = useState([])
   const [dateFilter, setDateFilter] = useState('today')
 
+  const isOwner = user?.role === 'owner'
+  const canAccessWaterPoint =
+    isOwner || user?.permissions?.water_point === true
+
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true)
     setDashboardError('')
@@ -380,10 +384,16 @@ function DashboardContent({ onNewInvoice, user }) {
         apiRequest('/properties'),
         apiRequest('/units'),
         apiRequest('/invoices'),
-        apiRequest('/water-sales'),
+        canAccessWaterPoint
+          ? apiRequest('/water-sales')
+          : Promise.resolve({ data: [] }),
         apiRequest('/water-connections'),
-        apiRequest('/tenants'),
-        apiRequest('/water-customers?status=active'),
+        isOwner
+          ? apiRequest('/tenants')
+          : Promise.resolve({ data: [] }),
+        isOwner
+          ? apiRequest('/water-customers?status=active')
+          : Promise.resolve({ data: [] }),
       ])
 
       const properties = Array.isArray(propertiesResult.data)
@@ -402,6 +412,11 @@ function DashboardContent({ onNewInvoice, user }) {
         ? customersResult.data : []
 
       setDashboardData({ properties, units, invoices, sales, connections })
+
+      if (!isOwner) {
+        setRecentTransactions([])
+        return
+      }
 
       const eligibleInvoices = invoices.filter(
         (invoice) =>
@@ -498,7 +513,7 @@ function DashboardContent({ onNewInvoice, user }) {
     } finally {
       setDashboardLoading(false)
     }
-  }, [])
+  }, [isOwner, canAccessWaterPoint])
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
@@ -1320,9 +1335,9 @@ function DashboardLayout() {
           ) : activePage === 'Water Management' ? (
             <WaterManagement user={user} />
           ) : activePage === 'Billing & Invoices' ? (
-            <BillingInvoices openCreateRequest={invoiceCreateRequest} />
+            <BillingInvoices user={user} openCreateRequest={invoiceCreateRequest} />
           ) : activePage === 'Payments' ? (
-            <Payments />
+            <Payments user={user} />
           ) : activePage === 'Expenses' ? (
             <Expenses user={user} />
           ) : activePage === 'Financial Reports' && user?.role === 'owner' ? (

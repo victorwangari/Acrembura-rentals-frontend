@@ -101,7 +101,8 @@ function StatCard({ icon: Icon, label, value, description }) {
   );
 }
 
-export default function Payments() {
+export default function Payments({ user }) {
+  const isOwner = user?.role === 'owner';
   const [invoices, setInvoices] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [waterCustomers, setWaterCustomers] = useState([]);
@@ -155,11 +156,16 @@ export default function Payments() {
     setError('');
 
     try {
+      const canAccessHomeConnections =
+        isOwner || user?.permissions?.home_connections === true;
+
       const [invoiceResult, tenantResult, customerResult] =
         await Promise.all([
           apiRequest('/invoices'),
           apiRequest('/tenants'),
-          apiRequest('/water-customers?status=active'),
+          canAccessHomeConnections
+            ? apiRequest('/water-customers?status=active')
+            : Promise.resolve({ data: [] }),
         ]);
 
       const invoiceRows = Array.isArray(invoiceResult.data)
@@ -176,76 +182,81 @@ export default function Payments() {
       setTenants(tenantRows);
       setWaterCustomers(customerRows);
 
-      const eligibleInvoices = invoiceRows.filter(
-        (invoice) =>
-          invoice.status !== 'draft' &&
-          Number(invoice.amount_paid || 0) > 0,
-      );
+      if (isOwner) {
+        const eligibleInvoices = invoiceRows.filter(
+          (invoice) =>
+            invoice.status !== 'draft' &&
+            Number(invoice.amount_paid || 0) > 0,
+        );
 
-      const historyResults = await Promise.allSettled(
-        eligibleInvoices.map(async (invoice) => {
-          const result = await apiRequest(
-            `/invoices/${invoice.id}/payments`,
+        const historyResults = await Promise.allSettled(
+          eligibleInvoices.map(async (invoice) => {
+            const result = await apiRequest(
+              `/invoices/${invoice.id}/payments`,
+            );
+
+            const rows = Array.isArray(result.data) ? result.data : [];
+
+            return rows.map((payment) => ({
+              ...payment,
+              invoice_number: invoice.invoice_number,
+              invoice_status: invoice.status,
+              invoice_balance: invoice.balance,
+              customer_name:
+                tenantRows.find(
+                  (item) => Number(item.id) === Number(invoice.tenant_id),
+                )?.full_name ||
+                tenantRows.find(
+                  (item) => Number(item.id) === Number(invoice.tenant_id),
+                )?.name ||
+                customerRows.find(
+                  (item) =>
+                    Number(item.id) === Number(invoice.water_customer_id),
+                )?.full_name ||
+                customerRows.find(
+                  (item) =>
+                    Number(item.id) === Number(invoice.water_customer_id),
+                )?.name ||
+                (invoice.tenant_id
+                  ? `Tenant #${invoice.tenant_id}`
+                  : invoice.water_customer_id
+                    ? `Water customer #${invoice.water_customer_id}`
+                    : 'Customer not linked'),
+            }));
+          }),
+        );
+
+        const failedRequests = historyResults.filter(
+          (result) => result.status === 'rejected',
+        );
+
+        const allTransactions = historyResults
+          .filter((result) => result.status === 'fulfilled')
+          .flatMap((result) => result.value)
+          .sort(
+            (a, b) =>
+              new Date(b.payment_date || b.created_at || 0).getTime() -
+              new Date(a.payment_date || a.created_at || 0).getTime(),
           );
 
-          const rows = Array.isArray(result.data) ? result.data : [];
+        setTransactions(allTransactions);
 
-          return rows.map((payment) => ({
-            ...payment,
-            invoice_number: invoice.invoice_number,
-            invoice_status: invoice.status,
-            invoice_balance: invoice.balance,
-            customer_name:
-              tenantRows.find(
-                (item) => Number(item.id) === Number(invoice.tenant_id),
-              )?.full_name ||
-              tenantRows.find(
-                (item) => Number(item.id) === Number(invoice.tenant_id),
-              )?.name ||
-              customerRows.find(
-                (item) =>
-                  Number(item.id) === Number(invoice.water_customer_id),
-              )?.full_name ||
-              customerRows.find(
-                (item) =>
-                  Number(item.id) === Number(invoice.water_customer_id),
-              )?.name ||
-              (invoice.tenant_id
-                ? `Tenant #${invoice.tenant_id}`
-                : invoice.water_customer_id
-                  ? `Water customer #${invoice.water_customer_id}`
-                  : 'Customer not linked'),
-          }));
-        }),
-      );
-
-      const failedRequests = historyResults.filter(
-        (result) => result.status === 'rejected',
-      );
-
-      const allTransactions = historyResults
-        .filter((result) => result.status === 'fulfilled')
-        .flatMap((result) => result.value)
-        .sort(
-          (a, b) =>
-            new Date(b.payment_date || b.created_at || 0).getTime() -
-            new Date(a.payment_date || a.created_at || 0).getTime(),
-        );
-
-      setTransactions(allTransactions);
-
-      if (failedRequests.length > 0) {
-        setError(
-          `Payment history could not be loaded for ${failedRequests.length} invoice(s). Other transactions are displayed.`,
-        );
+        if (failedRequests.length > 0) {
+          setError(
+            `Payment history could not be loaded for ${failedRequests.length} invoice(s). Other transactions are displayed.`,
+          );
+        }
+      } else {
+        setTransactions([]);
       }
+
     } catch (err) {
       setError(err.message || 'Unable to load payment information.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isOwner]);
 
   useEffect(() => {
     loadData();
@@ -401,6 +412,7 @@ export default function Payments() {
   };
 
   const downloadReceipt = async (payment) => {
+    if (!isOwner) return;
     setReceiptLoading(payment.id);
     setError('');
 
@@ -476,7 +488,9 @@ export default function Payments() {
             Payments
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Record invoice payments, track collections, and download receipts.
+            {isOwner
+              ? 'Record invoice payments, track collections, and download receipts.'
+              : 'View outstanding invoices and record payments received.'}
           </p>
         </div>
 
@@ -536,6 +550,8 @@ export default function Payments() {
         </div>
       )}
 
+      {isOwner ? (
+        <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Wallet}
@@ -748,6 +764,61 @@ export default function Payments() {
         )}
       </section>
 
+        </>
+      ) : (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-5">
+            <h2 className="font-bold text-slate-900">Outstanding invoices</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Select an invoice when recording a payment. Only invoices available
+              to your account are displayed.
+            </p>
+          </div>
+
+          {outstandingInvoices.length === 0 ? (
+            <div className="px-6 py-14 text-center">
+              <CheckCircle2 size={30} className="mx-auto text-emerald-500" />
+              <h3 className="mt-3 font-semibold text-slate-900">
+                No outstanding invoices
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                There are currently no unpaid invoices available to you.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[650px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3.5 font-semibold">Invoice</th>
+                    <th className="px-5 py-3.5 font-semibold">Customer</th>
+                    <th className="px-5 py-3.5 text-right font-semibold">Balance due</th>
+                    <th className="px-5 py-3.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {outstandingInvoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td className="px-5 py-4 font-semibold text-slate-900">
+                        {invoice.invoice_number || `Invoice #${invoice.id}`}
+                      </td>
+                      <td className="px-5 py-4 text-slate-700">
+                        {getCustomerName(invoice)}
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold tabular-nums text-slate-900">
+                        {money(invoice.balance)}
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={invoice.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"

@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { apiRequest } from '../api/client'
+import UserAssignments from '../components/UserAssignments'
 
 const initialForm = {
   full_name: '',
@@ -418,6 +419,8 @@ export default function UserManagement() {
           </div>
         )}
       </section>
+
+      <UserAssignments users={users} />
 
       {modal && (
         <Modal

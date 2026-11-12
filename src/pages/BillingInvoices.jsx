@@ -165,7 +165,7 @@ function MetricCard({ label, value, detail, icon: Icon, color }) {
     )
 }
 
-export default function BillingInvoices({ openCreateRequest = 0 }) {
+export default function BillingInvoices({ user, openCreateRequest = 0 }) {
     const [invoices, setInvoices] = useState([])
     const [tenants, setTenants] = useState([])
     const [customers, setCustomers] = useState([])
@@ -199,10 +199,16 @@ export default function BillingInvoices({ openCreateRequest = 0 }) {
         setError('')
 
         try {
+            const canAccessHomeConnections =
+                user?.role === 'owner' ||
+                user?.permissions?.home_connections === true
+
             const [invoiceResult, tenantResult, customerResult] = await Promise.all([
                 apiRequest('/invoices'),
                 apiRequest('/tenants'),
-                apiRequest('/water-customers?status=active'),
+                canAccessHomeConnections
+                    ? apiRequest('/water-customers?status=active')
+                    : Promise.resolve({ data: [] }),
             ])
 
             setInvoices(Array.isArray(invoiceResult.data) ? invoiceResult.data : [])

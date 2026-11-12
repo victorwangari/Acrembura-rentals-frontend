@@ -50,6 +50,7 @@ const today = () => {
 };
 
 const emptyForm = {
+  property_id: '',
   expense_type: '',
   category: 'Water Supply',
   description: '',
@@ -107,8 +108,13 @@ function StatCard({ icon: Icon, label, value, description }) {
 
 export default function Expenses({ user }) {
   const isOwner = user?.role === 'owner';
+  const canRecordShop = isOwner || user?.permissions?.water_point === true;
+  const canRecordHomeConnection =
+    isOwner || user?.permissions?.home_connections === true;
 
   const [expenses, setExpenses] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const canRecordProperty = isOwner || properties.length > 0;
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,8 +136,6 @@ export default function Expenses({ user }) {
 
   const loadExpenses = useCallback(
     async (background = false) => {
-      if (!isOwner) return;
-
       if (background) {
         setRefreshing(true);
       } else {
@@ -143,6 +147,8 @@ export default function Expenses({ user }) {
       try {
         const result = await apiRequest('/expenses');
         setExpenses(Array.isArray(result.data) ? result.data : []);
+        const propertyResult = await apiRequest('/properties');
+        setProperties(Array.isArray(propertyResult.data) ? propertyResult.data : []);
       } catch (err) {
         setError(err.message || 'Unable to load expenses.');
       } finally {
@@ -154,15 +160,19 @@ export default function Expenses({ user }) {
   );
 
   useEffect(() => {
-    if (isOwner) {
-      loadExpenses();
-    } else {
-      setLoading(false);
-    }
+    loadExpenses();
   }, [isOwner, loadExpenses]);
 
   const updateForm = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateExpenseType = (value) => {
+    setForm((current) => ({
+      ...current,
+      expense_type: value,
+      property_id: value === 'property' ? current.property_id : '',
+    }));
   };
 
   const openForm = () => {
@@ -178,7 +188,24 @@ export default function Expenses({ user }) {
     setNotice('');
 
     if (!form.expense_type) {
-      setFormError('Please select whether this expense belongs to Rent or Water.');
+      setFormError('Please select an expense type.');
+      return;
+    }
+
+    if (
+      !isOwner &&
+      (
+        (form.expense_type === 'shop' && !canRecordShop) ||
+        (form.expense_type === 'home_connection' && !canRecordHomeConnection) ||
+        (form.expense_type === 'property' && !canRecordProperty)
+      )
+    ) {
+      setFormError('You do not have permission to record this expense type.');
+      return;
+    }
+
+    if (form.expense_type === 'property' && !form.property_id) {
+      setFormError('Please select the property this expense belongs to.');
       return;
     }
 
@@ -210,6 +237,7 @@ export default function Expenses({ user }) {
       await apiRequest('/expenses', {
         method: 'POST',
         body: JSON.stringify({
+          property_id: form.property_id ? Number(form.property_id) : null,
           expense_type: form.expense_type,
           category: form.category.trim(),
           description: form.description.trim(),
@@ -225,9 +253,7 @@ export default function Expenses({ user }) {
       setForm(emptyForm);
       setNotice('Expense recorded successfully.');
 
-      if (isOwner) {
-        await loadExpenses(true);
-      }
+      await loadExpenses(true);
     } catch (err) {
       setFormError(err.message || 'Unable to record this expense.');
     } finally {
@@ -236,6 +262,7 @@ export default function Expenses({ user }) {
   };
 
   const deleteExpense = async (expense) => {
+    if (!isOwner) return;
     const confirmed = window.confirm(
       `Delete the expense "${expense.description}" (${money(expense.amount)})? This action cannot be undone.`,
     );
@@ -686,27 +713,69 @@ export default function Expenses({ user }) {
           </section>
         </>
       ) : (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mx-auto max-w-lg text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
-              <Receipt size={26} />
-            </div>
-            <h2 className="mt-4 text-lg font-bold text-slate-900">
-              Record a business expense
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Use this form to record business spending. Expense history,
-              totals, and deletion are restricted to the owner.
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-5">
+            <h2 className="font-bold text-slate-900">Recorded expenses</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Expenses for your assigned properties.
             </p>
-            <button
-              type="button"
-              onClick={openForm}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700"
-            >
-              <Plus size={17} />
-              Record expense
-            </button>
           </div>
+          {loading ? (
+            <p className="p-8 text-center text-sm text-slate-500">Loading expenses...</p>
+          ) : expenses.length === 0 ? (
+            <div className="p-8 text-center">
+              <Receipt size={30} className="mx-auto text-slate-300" />
+              <p className="mt-3 font-semibold text-slate-700">No expenses recorded yet</p>
+              <button
+                type="button"
+                onClick={openForm}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700"
+              >
+                <Plus size={17} />
+                Record expense
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3">Date</th>
+                    <th className="px-5 py-3">Description</th>
+                    <th className="px-5 py-3">Type</th>
+                    <th className="px-5 py-3">Property / Area</th>
+                    <th className="px-5 py-3">Category</th>
+                    <th className="px-5 py-3 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {expenses.map((expense) => {
+                    const property = properties.find(
+                      (item) => Number(item.id) === Number(expense.property_id)
+                    );
+                    return (
+                      <tr key={expense.id}>
+                        <td className="whitespace-nowrap px-5 py-4">{dateLabel(expense.expense_date)}</td>
+                        <td className="px-5 py-4 font-medium">{expense.description}</td>
+                        <td className="px-5 py-4 capitalize">
+                          {String(expense.expense_type || '').replaceAll('_', ' ')}
+                        </td>
+                        <td className="px-5 py-4">
+                          {expense.expense_type === 'property'
+                            ? property?.name || 'Assigned property'
+                            : expense.expense_type === 'shop'
+                              ? 'Shop'
+                              : 'Home connection'}
+                        </td>
+                        <td className="px-5 py-4">{expense.category}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-right font-semibold">{money(expense.amount)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 
@@ -756,6 +825,28 @@ export default function Expenses({ user }) {
                 </div>
               )}
 
+              {form.expense_type === 'property' && (
+                <div>
+                  <label htmlFor="expense-property" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Property <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    id="expense-property"
+                    required
+                    value={form.property_id}
+                    onChange={(event) => updateForm('property_id', event.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  >
+                    <option value="">Select property</option>
+                    {properties.map((property) => (
+                      <option key={property.id} value={String(property.id)}>
+                        {property.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label
@@ -768,12 +859,15 @@ export default function Expenses({ user }) {
                     id="expense-type"
                     required
                     value={form.expense_type}
-                    onChange={(event) => updateForm('expense_type', event.target.value)}
+                    onChange={(event) => updateExpenseType(event.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                   >
                     <option value="">Select expense type</option>
-                    <option value="rent">Rent</option>
-                    <option value="water">Water</option>
+                    {canRecordShop && <option value="shop">Shop</option>}
+                    {canRecordProperty && <option value="property">Property</option>}
+                    {canRecordHomeConnection && (
+                      <option value="home_connection">Home connection</option>
+                    )}
                   </select>
                 </div>
 

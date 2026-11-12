@@ -91,6 +91,15 @@ const MetricCard = ({
   )
 }
 
+const SimpleReportCard = ({ label, value }) => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <p className="text-sm font-medium text-slate-500">{label}</p>
+    <p className="mt-3 break-words text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+      {value}
+    </p>
+  </div>
+)
+
 const StatusCard = ({ label, value, tone }) => {
   const styles = {
     green: 'bg-emerald-50 text-emerald-700',
@@ -117,6 +126,15 @@ export default function FinancialReports() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [periodError, setPeriodError] = useState('')
+  const [activeReportTab, setActiveReportTab] = useState('overview')
+  const [properties, setProperties] = useState([])
+  const [selectedPropertyId, setSelectedPropertyId] = useState('')
+  const [allPropertiesReport, setAllPropertiesReport] = useState(null)
+  const [propertyReport, setPropertyReport] = useState(null)
+  const [shopReport, setShopReport] = useState(null)
+  const [homeConnectionsReport, setHomeConnectionsReport] = useState(null)
+  const [detailedLoading, setDetailedLoading] = useState(false)
+  const [detailedError, setDetailedError] = useState('')
 
   const loadReport = useCallback(async ({ quiet = false } = {}) => {
     if (startDate && endDate && startDate > endDate) {
@@ -155,6 +173,97 @@ export default function FinancialReports() {
   useEffect(() => {
     loadReport()
   }, [loadReport])
+
+  const loadDetailedReports = useCallback(async () => {
+    if (startDate && endDate && startDate > endDate) return
+
+    setDetailedLoading(true)
+    setDetailedError('')
+
+    const params = new URLSearchParams()
+    if (startDate) params.set('start_date', startDate)
+    if (endDate) params.set('end_date', endDate)
+    const query = params.toString()
+    const suffix = query ? `?${query}` : ''
+
+    try {
+      const requests = await Promise.allSettled([
+        apiRequest('/properties?include_inactive=true'),
+        apiRequest(`/reports/properties${suffix}`),
+        apiRequest(`/reports/shop${suffix}`),
+        apiRequest(`/reports/home-connections${suffix}`),
+      ])
+
+      const errors = []
+      const [propertyResult, allPropertiesResult, shopResult, homeResult] = requests
+
+      if (propertyResult.status === 'fulfilled') {
+        const records = Array.isArray(propertyResult.value.data)
+          ? propertyResult.value.data
+          : []
+        setProperties(records)
+        if (!selectedPropertyId && records.length > 0) {
+          setSelectedPropertyId(String(records[0].id))
+        }
+      } else {
+        errors.push(`Properties: ${propertyResult.reason?.message || 'Unable to load properties.'}`)
+      }
+
+      if (allPropertiesResult.status === 'fulfilled') {
+        setAllPropertiesReport(allPropertiesResult.value.data)
+      } else {
+        errors.push(`All properties: ${allPropertiesResult.reason?.message || 'Unable to load the consolidated report.'}`)
+      }
+
+      if (shopResult.status === 'fulfilled') {
+        setShopReport(shopResult.value.data)
+      } else {
+        errors.push(`Shop: ${shopResult.reason?.message || 'Unable to load the shop report.'}`)
+      }
+
+      if (homeResult.status === 'fulfilled') {
+        setHomeConnectionsReport(homeResult.value.data)
+      } else {
+        errors.push(`Home connections: ${homeResult.reason?.message || 'Unable to load the home-connection report.'}`)
+      }
+
+      if (errors.length) setDetailedError(errors.join(' '))
+    } finally {
+      setDetailedLoading(false)
+    }
+  }, [startDate, endDate, selectedPropertyId])
+
+  useEffect(() => {
+    loadDetailedReports()
+  }, [loadDetailedReports])
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setPropertyReport(null)
+      return
+    }
+
+    let cancelled = false
+    const params = new URLSearchParams()
+    if (startDate) params.set('start_date', startDate)
+    if (endDate) params.set('end_date', endDate)
+    const query = params.toString()
+
+    apiRequest(`/reports/properties/${selectedPropertyId}${query ? `?${query}` : ''}`)
+      .then((result) => {
+        if (!cancelled) setPropertyReport(result.data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPropertyReport(null)
+          setDetailedError(err.message || 'Unable to load the selected property report.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedPropertyId, startDate, endDate])
 
   const metrics = useMemo(() => {
     if (!report) return null
@@ -384,7 +493,38 @@ export default function FinancialReports() {
         </div>
       )}
 
-      {report && metrics && (
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'overview', label: 'Overview' },
+            { id: 'properties', label: 'All Properties' },
+            { id: 'property', label: 'Individual Property' },
+            { id: 'shop', label: 'Shop' },
+            { id: 'home-connections', label: 'Home Connections' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveReportTab(tab.id)}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                activeReportTab === tab.id
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {detailedError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {detailedError}
+        </div>
+      )}
+
+      {activeReportTab === 'overview' && report && metrics && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <MetricCard
@@ -667,7 +807,159 @@ export default function FinancialReports() {
               invoice payments.
             </p>
           </div>
+
         </>
+      )}
+
+      {activeReportTab !== 'overview' && (
+        <section className="space-y-6">
+          {detailedLoading && (
+            <p className="rounded-xl bg-blue-50 p-4 text-sm text-blue-700">
+              Loading detailed report...
+            </p>
+          )}
+
+          {activeReportTab === 'properties' && (
+            <div className="space-y-5">
+              <h2 className="text-lg font-bold text-slate-900">All Properties Financial Report</h2>
+              {allPropertiesReport && (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {[
+                      ['Rent collected', allPropertiesReport.totals?.rent_collected],
+                      ['Tenant water collected', allPropertiesReport.totals?.tenant_water_collected],
+                      ['Total income', allPropertiesReport.totals?.total_income],
+                      ['Expenses', allPropertiesReport.totals?.expenses],
+                      ['Net income', allPropertiesReport.totals?.net_income],
+                      ['Outstanding', allPropertiesReport.totals?.outstanding],
+                    ].map(([label, value]) => (
+                      <SimpleReportCard key={label} label={label} value={currency(value)} />
+                    ))}
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                          {['Property', 'Status', 'Rent collected', 'Water collected', 'Expenses', 'Net income', 'Outstanding'].map((heading) => (
+                            <th key={heading} className="px-4 py-3">{heading}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(allPropertiesReport.properties || []).map((item) => (
+                          <tr key={item.property_id}>
+                            <td className="px-4 py-3 font-medium">{item.property_name}</td>
+                            <td className="px-4 py-3">{item.is_active ? 'Active' : 'Inactive'}</td>
+                            <td className="px-4 py-3">{currency(item.rent_collected)}</td>
+                            <td className="px-4 py-3">{currency(item.tenant_water_collected)}</td>
+                            <td className="px-4 py-3">{currency(item.expenses)}</td>
+                            <td className="px-4 py-3 font-semibold">{currency(item.net_income)}</td>
+                            <td className="px-4 py-3">{currency(item.outstanding)}</td>
+                          </tr>
+                        ))}
+                        {(allPropertiesReport.properties || []).length === 0 && (
+                          <tr><td colSpan={7} className="p-5 text-center text-slate-500">No properties found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeReportTab === 'property' && (
+            <div className="space-y-5">
+              <h2 className="text-lg font-bold text-slate-900">Individual Property Report</h2>
+              <div className="max-w-xl">
+                <label htmlFor="financial-property" className="mb-2 block text-sm font-medium">Select property</label>
+                <select
+                  id="financial-property"
+                  value={selectedPropertyId}
+                  onChange={(event) => setSelectedPropertyId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
+                >
+                  <option value="">Choose a property</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={String(property.id)}>
+                      {property.name}{property.is_active ? '' : ' (Inactive)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {propertyReport && (
+                <>
+                  <h3 className="font-semibold text-slate-800">{propertyReport.property_name}</h3>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {[
+                      ['Rent collected', propertyReport.rent_collected],
+                      ['Tenant water collected', propertyReport.tenant_water_collected],
+                      ['Total income', propertyReport.total_income],
+                      ['Expenses', propertyReport.expenses],
+                      ['Net income', propertyReport.net_income],
+                      ['Outstanding in period', propertyReport.outstanding],
+                      ['Outstanding all periods', propertyReport.outstanding_all_periods],
+                      ['Total invoiced', propertyReport.total_invoiced],
+                    ].map(([label, value]) => (
+                      <SimpleReportCard key={label} label={label} value={currency(value)} />
+                    ))}
+                  </div>
+                </>
+              )}
+              {!selectedPropertyId && <p className="text-sm text-slate-500">Select a property to view its report.</p>}
+            </div>
+          )}
+
+          {activeReportTab === 'shop' && (
+            <div className="space-y-5">
+              <h2 className="text-lg font-bold text-slate-900">Shop Financial Report</h2>
+              {shopReport && (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    ['Shop / jerrican sales', shopReport.shop_sales],
+                    ['Lorry sales', shopReport.lorry_sales],
+                    ['Total sales', shopReport.total_sales],
+                    ['Shop expenses', shopReport.expenses],
+                    ['Net shop income', shopReport.net_income],
+                    ['Shop transactions', shopReport.shop_sale_count],
+                    ['Lorry transactions', shopReport.lorry_sale_count],
+                  ].map(([label, value]) => (
+                    <SimpleReportCard key={label} label={label} value={
+                      label.includes('transactions') ? String(value ?? 0) : currency(value)
+                    } />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeReportTab === 'home-connections' && (
+            <div className="space-y-5">
+              <h2 className="text-lg font-bold text-slate-900">Home Connections Financial Report</h2>
+              {homeConnectionsReport && (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    ['Water invoiced', homeConnectionsReport.invoiced_amount],
+                    ['Payments received', homeConnectionsReport.payments_received],
+                    ['Outstanding in period', homeConnectionsReport.outstanding],
+                    ['Outstanding all periods', homeConnectionsReport.outstanding_all_periods],
+                    ['Home connection expenses', homeConnectionsReport.expenses],
+                    ['Net income', homeConnectionsReport.net_income],
+                    ['Invoices issued', homeConnectionsReport.invoice_count],
+                    ['Payment transactions', homeConnectionsReport.payment_count],
+                  ].map(([label, value]) => (
+                    <SimpleReportCard key={label} label={label} value={
+                      label === 'Invoices issued' || label === 'Payment transactions'
+                        ? String(value ?? 0)
+                        : currency(value)
+                    } />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       )}
     </div>
   )
