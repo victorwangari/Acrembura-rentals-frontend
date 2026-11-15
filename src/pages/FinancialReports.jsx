@@ -299,6 +299,46 @@ export default function FinancialReports() {
     }
   }, [report])
 
+  const consolidatedMetrics = useMemo(() => {
+    const rental = allPropertiesReport?.totals || {}
+    const shop = shopReport || {}
+    const home = homeConnectionsReport || {}
+
+    const rentCollected = numberValue(rental.rent_collected)
+    const tenantWaterCollected = numberValue(rental.tenant_water_collected)
+    const propertyExpenses = numberValue(rental.expenses)
+    const rentalIncome = rentCollected + tenantWaterCollected
+    const rentalNetIncome = rentalIncome - propertyExpenses
+
+    const shopSales = numberValue(shop.total_sales)
+    const shopExpenses = numberValue(shop.expenses)
+    const homeCollections = numberValue(home.payments_received)
+    const homeExpenses = numberValue(home.expenses)
+
+    const combinedShopHomeIncome = shopSales + homeCollections
+    const combinedShopHomeExpenses = shopExpenses + homeExpenses
+    const combinedShopHomeNet =
+      combinedShopHomeIncome - combinedShopHomeExpenses
+
+    return {
+      rentCollected,
+      tenantWaterCollected,
+      rentalIncome,
+      propertyExpenses,
+      rentalNetIncome,
+      shopSales,
+      shopExpenses,
+      shopNetIncome: shopSales - shopExpenses,
+      homeCollections,
+      homeExpenses,
+      homeNetIncome: homeCollections - homeExpenses,
+      combinedShopHomeIncome,
+      combinedShopHomeExpenses,
+      combinedShopHomeNet,
+      overallNetIncome: rentalNetIncome + combinedShopHomeNet,
+    }
+  }, [allPropertiesReport, shopReport, homeConnectionsReport])
+
   const exportCsv = () => {
     if (!report) return
 
@@ -526,127 +566,144 @@ export default function FinancialReports() {
 
       {activeReportTab === 'overview' && report && metrics && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <MetricCard
-              title="Total invoiced"
-              amount={report.total_invoiced}
-              description="Invoices issued in the selected period"
-              icon={FileBarChart}
-              tone="blue"
-            />
-            <MetricCard
-              title="Invoice payments received"
-              amount={metrics.totalPaid}
-              description="Payments received during the selected period"
-              icon={Wallet}
-              tone="green"
-            />
-            <MetricCard
-              title="Direct water sales"
-              amount={metrics.waterSales}
-              description="Shop and other direct water sales"
-              icon={CircleDollarSign}
-              tone="cyan"
-            />
-            <MetricCard
-              title="Total received"
-              amount={metrics.totalReceived}
-              description="Invoice payments plus direct water sales"
-              icon={TrendingUp}
-              tone="green"
-            />
-            <MetricCard
-              title="Total expenses"
-              amount={metrics.expenses}
-              description="Expenses recorded during the selected period"
-              icon={TrendingDown}
-              tone="red"
-            />
-            <MetricCard
-              title="Net cash flow"
-              amount={metrics.netCashFlow}
-              description="Total received minus recorded expenses"
-              icon={metrics.netCashFlow >= 0 ? ArrowUpRight : ArrowDownRight}
-              tone={metrics.netCashFlow >= 0 ? 'green' : 'red'}
-            />
-          </div>
+          {allPropertiesReport && shopReport && homeConnectionsReport ? (
+            <div className="space-y-6">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Overall Business Performance
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Net income from rental operations, shop sales and home connections
+                    during the selected period.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <SimpleReportCard
+                    label="Overall business net income"
+                    value={currency(consolidatedMetrics.overallNetIncome)}
+                  />
+                  <SimpleReportCard
+                    label="Total income collected"
+                    value={currency(
+                      consolidatedMetrics.rentalIncome +
+                      consolidatedMetrics.combinedShopHomeIncome
+                    )}
+                  />
+                </div>
+              </section>
 
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Rent Financial Summary
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Rent payments, rent expenses, and net rent income for the selected period.
-              </p>
-            </div>
+              <section className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Rental Operations — All Properties
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Actual rent and tenant water payments received, less property expenses.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <SimpleReportCard
+                    label="Rent collected"
+                    value={currency(consolidatedMetrics.rentCollected)}
+                  />
+                  <SimpleReportCard
+                    label="Tenant water collected"
+                    value={currency(consolidatedMetrics.tenantWaterCollected)}
+                  />
+                  <SimpleReportCard
+                    label="Property expenses"
+                    value={currency(consolidatedMetrics.propertyExpenses)}
+                  />
+                  <SimpleReportCard
+                    label="Net rental income"
+                    value={currency(consolidatedMetrics.rentalNetIncome)}
+                  />
+                </div>
+              </section>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <MetricCard
-                title="Rent Payments Received"
-                amount={metrics.rentPayments}
-                description="Rent income received through invoices"
-                icon={Wallet}
-                tone="blue"
-              />
-              <MetricCard
-                title="Rent Expenses"
-                amount={metrics.rentExpenses}
-                description="Expenses classified under rent"
-                icon={TrendingDown}
-                tone="red"
-              />
-              <MetricCard
-                title="Net Rent Income"
-                amount={metrics.netRentIncome}
-                description="Rent payments minus rent expenses"
-                icon={metrics.netRentIncome >= 0 ? ArrowUpRight : ArrowDownRight}
-                tone={metrics.netRentIncome >= 0 ? 'green' : 'red'}
-              />
-            </div>
-          </section>
+              <section className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Shop Operations
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Jerrican/shop sales and lorry sales, less shop expenses.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <SimpleReportCard
+                    label="Shop and lorry sales"
+                    value={currency(consolidatedMetrics.shopSales)}
+                  />
+                  <SimpleReportCard
+                    label="Shop expenses"
+                    value={currency(consolidatedMetrics.shopExpenses)}
+                  />
+                  <SimpleReportCard
+                    label="Net shop income"
+                    value={currency(consolidatedMetrics.shopNetIncome)}
+                  />
+                </div>
+              </section>
 
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Water Financial Summary
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Water invoice payments, direct sales, water expenses, and net water income.
-              </p>
-            </div>
+              <section className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Home Connections
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Payments received from external water customers, less home connection expenses.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <SimpleReportCard
+                    label="Payments received"
+                    value={currency(consolidatedMetrics.homeCollections)}
+                  />
+                  <SimpleReportCard
+                    label="Home connection expenses"
+                    value={currency(consolidatedMetrics.homeExpenses)}
+                  />
+                  <SimpleReportCard
+                    label="Net home connection income"
+                    value={currency(consolidatedMetrics.homeNetIncome)}
+                  />
+                  <SimpleReportCard
+                    label="Outstanding home connection invoices"
+                    value={currency(homeConnectionsReport.outstanding)}
+                  />
+                </div>
+              </section>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard
-                title="Water Invoice Payments"
-                amount={metrics.waterInvoicePayments}
-                description="Water payments received through invoices"
-                icon={Wallet}
-                tone="blue"
-              />
-              <MetricCard
-                title="Direct Water Sales"
-                amount={metrics.waterSales}
-                description="Shop and other direct water sales"
-                icon={CircleDollarSign}
-                tone="cyan"
-              />
-              <MetricCard
-                title="Water Expenses"
-                amount={metrics.waterExpenses}
-                description="Expenses classified under water"
-                icon={TrendingDown}
-                tone="red"
-              />
-              <MetricCard
-                title="Net Water Income"
-                amount={metrics.netWaterIncome}
-                description="Total water income minus water expenses"
-                icon={metrics.netWaterIncome >= 0 ? ArrowUpRight : ArrowDownRight}
-                tone={metrics.netWaterIncome >= 0 ? 'green' : 'red'}
-              />
+              <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
+                <h2 className="text-lg font-bold text-slate-900">
+                  Combined Shop + Home Connections
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Combined water business collections, less shop and home connection expenses.
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <SimpleReportCard
+                    label="Combined income"
+                    value={currency(consolidatedMetrics.combinedShopHomeIncome)}
+                  />
+                  <SimpleReportCard
+                    label="Combined expenses"
+                    value={currency(consolidatedMetrics.combinedShopHomeExpenses)}
+                  />
+                  <SimpleReportCard
+                    label="Combined net income"
+                    value={currency(consolidatedMetrics.combinedShopHomeNet)}
+                  />
+                </div>
+              </section>
             </div>
-          </section>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+              Loading the consolidated financial reports...
+            </div>
+          )}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-5">
