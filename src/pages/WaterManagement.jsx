@@ -216,36 +216,22 @@ export default function WaterManagement({ user }) {
       : 0
   }, [saleForm.opening_reading, saleForm.closing_reading])
 
-  const standardJerrycans = Number(saleForm.standard_jerrycans || 0)
-  const customJerrycanLiters = Number(saleForm.custom_jerrycan_liters || 0)
-
-  const jerrycanQuantity =
-    standardJerrycans * 20 + customJerrycanLiters
-
-  const displayedQuantity = isLorry
-    ? lorryQuantity
-    : jerrycanQuantity
-
   const fixedLorryPrices = {
     5000: 500,
     10000: 1000,
   }
-
-  const displayedUnitPrice = isLorry
-    ? Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
-    : 0.25
 
   const totalAmount = useMemo(() => {
     if (isLorry) {
       return Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
     }
 
-    if (!Number.isFinite(displayedQuantity) || displayedQuantity <= 0) {
+    if (!Number.isFinite(lorryQuantity) || lorryQuantity <= 0) {
       return 0
     }
 
-    return Number((displayedQuantity * 0.25).toFixed(2))
-  }, [isLorry, saleForm.lorry_capacity_liters, displayedQuantity])
+    return Number((lorryQuantity * 250).toFixed(2))
+  }, [isLorry, saleForm.lorry_capacity_liters, lorryQuantity])
 
   useEffect(() => {
     let cancelled = false
@@ -383,6 +369,42 @@ export default function WaterManagement({ user }) {
   }, [summaryPeriod, customSummaryStart, customSummaryEnd])
 
   useEffect(() => {
+    if (!showSaleForm || saleForm.sale_type !== 'shop') return
+
+    let cancelled = false
+
+    async function loadLatestShopReading() {
+      try {
+        const response = await apiRequest('/water-sales/latest-shop-reading')
+        const reading = response?.data?.closing_reading
+
+        if (!cancelled && reading !== null && reading !== undefined) {
+          setSaleForm((previous) => ({
+            ...previous,
+            opening_reading:
+              previous.opening_reading === ''
+                ? String(reading)
+                : previous.opening_reading,
+          }))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setNotice({
+            type: 'error',
+            message: `Could not load the previous shop meter reading: ${error.message}`,
+          })
+        }
+      }
+    }
+
+    loadLatestShopReading()
+
+    return () => {
+      cancelled = true
+    }
+  }, [showSaleForm, saleForm.sale_type])
+
+  useEffect(() => {
     loadSales()
   }, [loadSales])
 
@@ -398,10 +420,10 @@ export default function WaterManagement({ user }) {
     event.preventDefault()
     setNotice(null)
 
-    if (!saleForm.sale_date) {
+    if (isLorry && !saleForm.sale_date) {
       setNotice({
         type: 'error',
-        message: 'Select the date of the sale.',
+        message: 'Select the date of the lorry sale.',
       })
       return
     }
@@ -451,8 +473,6 @@ export default function WaterManagement({ user }) {
     } else {
       const opening = Number(saleForm.opening_reading)
       const closing = Number(saleForm.closing_reading)
-      const standard = Number(saleForm.standard_jerrycans || 0)
-      const customLiters = Number(saleForm.custom_jerrycan_liters || 0)
 
       if (
         saleForm.opening_reading === '' ||
@@ -468,27 +488,12 @@ export default function WaterManagement({ user }) {
         })
         return
       }
-
-      if (
-        !Number.isInteger(standard) ||
-        standard < 0 ||
-        !Number.isFinite(customLiters) ||
-        customLiters < 0 ||
-        standard * 20 + customLiters <= 0
-      ) {
-        setNotice({
-          type: 'error',
-          message: 'Enter a valid standard jerrycan count or customized jerrycan litres.',
-        })
-        return
-      }
     }
 
     setSaving(true)
     try {
       const payload = {
         sale_type: saleForm.sale_type,
-        sale_date: `${saleForm.sale_date}T00:00:00`,
         payment_method: saleForm.payment_method,
         customer_name: saleForm.customer_name.trim() || null,
         lorry_registration_number:
@@ -498,6 +503,7 @@ export default function WaterManagement({ user }) {
       }
 
       if (isLorry) {
+        payload.sale_date = `${saleForm.sale_date}T00:00:00`
         payload.lorry_sale_point = saleForm.lorry_sale_point
         payload.opening_reading = saleForm.opening_reading
         payload.closing_reading = saleForm.closing_reading
@@ -505,8 +511,6 @@ export default function WaterManagement({ user }) {
       } else {
         payload.opening_reading = saleForm.opening_reading
         payload.closing_reading = saleForm.closing_reading
-        payload.standard_jerrycans = Number(saleForm.standard_jerrycans || 0)
-        payload.custom_jerrycan_liters = Number(saleForm.custom_jerrycan_liters || 0)
       }
 
       const response = await apiRequest('/water-sales', {
@@ -526,6 +530,12 @@ export default function WaterManagement({ user }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  function openSaleForm() {
+    setNotice(null)
+    setSaleForm({ ...emptySale, sale_date: today() })
+    setShowSaleForm(true)
   }
 
   function openCustomerForm(customer = null) {
@@ -644,7 +654,7 @@ export default function WaterManagement({ user }) {
             onClick={() => {
               setNotice(null)
               if (tab === 'customers') setShowCustomerForm(true)
-              else setShowSaleForm(true)
+              else openSaleForm()
             }}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
@@ -978,7 +988,7 @@ export default function WaterManagement({ user }) {
               </p>
               <button
                 type="button"
-                onClick={() => setShowSaleForm(true)}
+                onClick={openSaleForm}
                 className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
               >
                 Record first sale
@@ -1261,6 +1271,8 @@ export default function WaterManagement({ user }) {
                     setSaleForm((previous) => ({
                       ...previous,
                       sale_type: event.target.value,
+                      opening_reading: '',
+                      closing_reading: '',
                       lorry_registration_number:
                         event.target.value === 'lorry'
                           ? previous.lorry_registration_number
@@ -1280,6 +1292,7 @@ export default function WaterManagement({ user }) {
               </Field>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {isLorry && (
                 <Field label="Sale date" required>
                   <input
                     type="date"
@@ -1294,6 +1307,13 @@ export default function WaterManagement({ user }) {
                     required
                   />
                 </Field>
+                )}
+
+                {!isLorry && (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                    Recording date and time will be generated automatically using the server timestamp.
+                  </div>
+                )}
 
                 <Field label="Customer name" hint="Optional for walk-in sales">
                   <input
@@ -1466,51 +1486,9 @@ export default function WaterManagement({ user }) {
                       />
                     </Field>
 
-                    <Field label="Standard jerrycans (20 litres each)">
+                    <Field label="Shop water rate">
                       <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={saleForm.standard_jerrycans}
-                        onChange={(event) =>
-                          setSaleForm((previous) => ({
-                            ...previous,
-                            standard_jerrycans: event.target.value,
-                          }))
-                        }
-                        className={inputClass}
-                        placeholder="e.g. 3"
-                      />
-                    </Field>
-
-                    <Field label="Customized jerrycans (combined litres)">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.001"
-                        value={saleForm.custom_jerrycan_liters}
-                        onChange={(event) =>
-                          setSaleForm((previous) => ({
-                            ...previous,
-                            custom_jerrycan_liters: event.target.value,
-                          }))
-                        }
-                        className={inputClass}
-                        placeholder="e.g. 60 for two 30L cans"
-                      />
-                    </Field>
-
-                    <Field label="Total jerrycan litres sold">
-                      <input
-                        value={jerrycanQuantity.toFixed(3)}
-                        className={`${inputClass} bg-slate-50`}
-                        readOnly
-                      />
-                    </Field>
-
-                    <Field label="Price per litre">
-                      <input
-                        value="KSh 0.25"
+                        value="KSh 250.00 per m³"
                         className={`${inputClass} bg-slate-50`}
                         readOnly
                       />
@@ -1576,7 +1554,7 @@ export default function WaterManagement({ user }) {
                 <p className="mt-1 text-xs text-blue-700">
                   {isLorry
                     ? 'Meter readings are recorded for reference. The charge is fixed by the selected lorry capacity.'
-                    : 'Total jerrycan litres × KSh 0.25 per litre.'}
+                    : 'Meter consumption (m³) × KSh 250 per m³.'}
                 </p>
               </div>
 

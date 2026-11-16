@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Droplets,
   Plus,
@@ -14,8 +14,10 @@ import {
   CheckCircle2,
   AlertCircle,
   LoaderCircle,
-} from 'lucide-react'
-import { apiRequest } from '../api/client'
+} from 'lucide-react';
+import { apiRequest } from '../api/client';
+import WaterMeterBilling from './WaterMeterBilling';
+import WaterRates from './WaterRates';
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -27,8 +29,15 @@ const PAYMENT_METHODS = [
 
 const emptySale = {
   sale_type: 'shop',
+  sale_date: today(),
   customer_name: '',
   lorry_registration_number: '',
+  lorry_sale_point: '',
+  lorry_capacity_liters: '',
+  opening_reading: '',
+  closing_reading: '',
+  standard_jerrycans: '',
+  custom_jerrycan_liters: '',
   quantity: '',
   unit_price: '',
   payment_method: 'cash',
@@ -66,9 +75,10 @@ function formatDate(value) {
   return Number.isNaN(date.getTime())
     ? value
     : date.toLocaleString('en-KE', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Africa/Nairobi',
+    })
 }
 
 function Notice({ notice, onClose }) {
@@ -80,11 +90,10 @@ function Notice({ notice, onClose }) {
   return (
     <div
       role="alert"
-      className={`mb-5 flex items-start gap-3 rounded-xl border p-4 ${
-        success
+      className={`mb-5 flex items-start gap-3 rounded-xl border p-4 ${success
           ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
           : 'border-red-200 bg-red-50 text-red-800'
-      }`}
+        }`}
     >
       <Icon size={20} className="mt-0.5 shrink-0" />
       <p className="flex-1 text-sm">{notice.message}</p>
@@ -146,8 +155,12 @@ export default function WaterManagement({ user }) {
   const [tab, setTab] = useState('sales')
   const [sales, setSales] = useState([])
   const [customers, setCustomers] = useState([])
+  const [lorryRates, setLorryRates] = useState([])
+  const [loadingLorryRates, setLoadingLorryRates] = useState(false)
   const [summary, setSummary] = useState(null)
-  const [summaryDate, setSummaryDate] = useState(today())
+  const [summaryPeriod, setSummaryPeriod] = useState('today')
+  const [customSummaryStart, setCustomSummaryStart] = useState(today())
+  const [customSummaryEnd, setCustomSummaryEnd] = useState(today())
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [saleTypeFilter, setSaleTypeFilter] = useState('')
@@ -156,6 +169,7 @@ export default function WaterManagement({ user }) {
   const [search, setSearch] = useState('')
   const [saleForm, setSaleForm] = useState(emptySale)
   const [customerForm, setCustomerForm] = useState(emptyCustomer)
+  const [editingCustomer, setEditingCustomer] = useState(null)
   const [showSaleForm, setShowSaleForm] = useState(false)
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -167,21 +181,107 @@ export default function WaterManagement({ user }) {
   const isOwner = user?.role === 'owner'
   const isLorry = saleForm.sale_type === 'lorry'
 
-  const totalAmount = useMemo(() => {
-    const quantity = Number(saleForm.quantity)
-    const price = Number(saleForm.unit_price)
+  const applicableLorryRate = useMemo(() => {
+    const saleDate = saleForm.sale_date || today()
+
+    return lorryRates
+      .filter((rate) =>
+        rate.customer_type === 'lorry' &&
+        rate.is_active === true &&
+        rate.effective_from <= saleDate &&
+        (!rate.effective_to || rate.effective_to >= saleDate)
+      )
+      .sort((a, b) =>
+        b.effective_from.localeCompare(a.effective_from)
+      )[0] || null
+  }, [lorryRates, saleForm.sale_date])
+
+  const lorryQuantity = useMemo(() => {
     if (
-      saleForm.quantity === '' ||
-      saleForm.unit_price === '' ||
-      !Number.isFinite(quantity) ||
-      !Number.isFinite(price) ||
-      quantity <= 0 ||
-      price <= 0
+      saleForm.opening_reading === '' ||
+      saleForm.closing_reading === ''
     ) {
       return 0
     }
-    return quantity * price
-  }, [saleForm.quantity, saleForm.unit_price])
+
+    const opening = Number(saleForm.opening_reading)
+    const closing = Number(saleForm.closing_reading)
+    const quantity = closing - opening
+
+    return Number.isFinite(opening) &&
+      Number.isFinite(closing) &&
+      opening >= 0 &&
+      closing > opening
+      ? quantity
+      : 0
+  }, [saleForm.opening_reading, saleForm.closing_reading])
+
+  const standardJerrycans = Number(saleForm.standard_jerrycans || 0)
+  const customJerrycanLiters = Number(saleForm.custom_jerrycan_liters || 0)
+
+  const jerrycanQuantity =
+    standardJerrycans * 20 + customJerrycanLiters
+
+  const displayedQuantity = isLorry
+    ? lorryQuantity
+    : jerrycanQuantity
+
+  const fixedLorryPrices = {
+    5000: 500,
+    10000: 1000,
+  }
+
+  const displayedUnitPrice = isLorry
+    ? Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
+    : 0.25
+
+  const totalAmount = useMemo(() => {
+    if (isLorry) {
+      return Number(fixedLorryPrices[saleForm.lorry_capacity_liters] || 0)
+    }
+
+    if (!Number.isFinite(displayedQuantity) || displayedQuantity <= 0) {
+      return 0
+    }
+
+    return Number((displayedQuantity * 0.25).toFixed(2))
+  }, [isLorry, saleForm.lorry_capacity_liters, displayedQuantity])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadLorryRates() {
+      setLoadingLorryRates(true)
+
+      try {
+        const response = await apiRequest(
+          '/water-rates?customer_type=lorry&is_active=true'
+        )
+
+        if (!cancelled) {
+          setLorryRates(Array.isArray(response.data) ? response.data : [])
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLorryRates([])
+          setNotice({
+            type: 'error',
+            message: `Could not load lorry water rates: ${error.message}`,
+          })
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingLorryRates(false)
+        }
+      }
+    }
+
+    loadLorryRates()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const loadSales = useCallback(async () => {
     setLoadingSales(true)
@@ -222,12 +322,57 @@ export default function WaterManagement({ user }) {
   }, [customerStatusFilter])
 
   const loadSummary = useCallback(async () => {
-    if (!summaryDate) return
+    const now = new Date()
+    const toLocalDate = (date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    let start = end
+
+    if (summaryPeriod === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else if (summaryPeriod === 'three_months') {
+      start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    } else if (summaryPeriod === 'custom') {
+      if (!customSummaryStart || !customSummaryEnd) return
+      if (customSummaryStart > customSummaryEnd) {
+        setNotice({
+          type: 'error',
+          message: 'The start date cannot be later than the end date.',
+        })
+        return
+      }
+      start = new Date(`${customSummaryStart}T00:00:00`)
+      const customEnd = customSummaryEnd
+      setLoadingSummary(true)
+      try {
+        const params = new URLSearchParams({
+          start_date: customSummaryStart,
+          end_date: customEnd,
+        })
+        const response = await apiRequest(`/water-sales/summary?${params}`)
+        setSummary(response.data)
+      } catch (error) {
+        setSummary(null)
+        setNotice({ type: 'error', message: error.message })
+      } finally {
+        setLoadingSummary(false)
+      }
+      return
+    }
+
+    const params = new URLSearchParams({
+      start_date: toLocalDate(start),
+      end_date: toLocalDate(end),
+    })
+
     setLoadingSummary(true)
     try {
-      const response = await apiRequest(
-        `/water-sales/summary?date=${encodeURIComponent(summaryDate)}`,
-      )
+      const response = await apiRequest(`/water-sales/summary?${params}`)
       setSummary(response.data)
     } catch (error) {
       setSummary(null)
@@ -235,7 +380,7 @@ export default function WaterManagement({ user }) {
     } finally {
       setLoadingSummary(false)
     }
-  }, [summaryDate])
+  }, [summaryPeriod, customSummaryStart, customSummaryEnd])
 
   useEffect(() => {
     loadSales()
@@ -253,34 +398,115 @@ export default function WaterManagement({ user }) {
     event.preventDefault()
     setNotice(null)
 
-    if (Number(saleForm.quantity) <= 0 || Number(saleForm.unit_price) <= 0) {
+    if (!saleForm.sale_date) {
       setNotice({
         type: 'error',
-        message: 'Quantity and unit price must both be greater than zero.',
+        message: 'Select the date of the sale.',
       })
       return
     }
 
-    if (isLorry && !saleForm.lorry_registration_number.trim()) {
-      setNotice({
-        type: 'error',
-        message: 'Enter the lorry registration number for a lorry sale.',
-      })
-      return
+    if (isLorry) {
+      const opening = Number(saleForm.opening_reading)
+      const closing = Number(saleForm.closing_reading)
+
+      if (
+        saleForm.opening_reading === '' ||
+        saleForm.closing_reading === '' ||
+        !Number.isFinite(opening) ||
+        !Number.isFinite(closing) ||
+        opening < 0 ||
+        closing <= opening
+      ) {
+        setNotice({
+          type: 'error',
+          message: 'Enter valid meter readings. The closing reading must be greater than the opening reading.',
+        })
+        return
+      }
+
+      if (!['A', 'B'].includes(saleForm.lorry_sale_point)) {
+        setNotice({
+          type: 'error',
+          message: 'Select Lorry Sale Point A or B.',
+        })
+        return
+      }
+
+      if (!['5000', '10000'].includes(String(saleForm.lorry_capacity_liters))) {
+        setNotice({
+          type: 'error',
+          message: 'Select a lorry capacity of 5,000 or 10,000 litres.',
+        })
+        return
+      }
+
+      if (!saleForm.lorry_registration_number.trim()) {
+        setNotice({
+          type: 'error',
+          message: 'Enter the lorry registration number for a lorry sale.',
+        })
+        return
+      }
+    } else {
+      const opening = Number(saleForm.opening_reading)
+      const closing = Number(saleForm.closing_reading)
+      const standard = Number(saleForm.standard_jerrycans || 0)
+      const customLiters = Number(saleForm.custom_jerrycan_liters || 0)
+
+      if (
+        saleForm.opening_reading === '' ||
+        saleForm.closing_reading === '' ||
+        !Number.isFinite(opening) ||
+        !Number.isFinite(closing) ||
+        opening < 0 ||
+        closing <= opening
+      ) {
+        setNotice({
+          type: 'error',
+          message: 'Enter valid meter readings. Closing reading must be greater than opening reading.',
+        })
+        return
+      }
+
+      if (
+        !Number.isInteger(standard) ||
+        standard < 0 ||
+        !Number.isFinite(customLiters) ||
+        customLiters < 0 ||
+        standard * 20 + customLiters <= 0
+      ) {
+        setNotice({
+          type: 'error',
+          message: 'Enter a valid standard jerrycan count or customized jerrycan litres.',
+        })
+        return
+      }
     }
 
     setSaving(true)
     try {
       const payload = {
         sale_type: saleForm.sale_type,
-        quantity: saleForm.quantity,
-        unit_price: saleForm.unit_price,
+        sale_date: `${saleForm.sale_date}T00:00:00`,
         payment_method: saleForm.payment_method,
         customer_name: saleForm.customer_name.trim() || null,
         lorry_registration_number:
           saleForm.lorry_registration_number.trim().toUpperCase() || null,
         reference_number: saleForm.reference_number.trim() || null,
         notes: saleForm.notes.trim() || null,
+      }
+
+      if (isLorry) {
+        payload.lorry_sale_point = saleForm.lorry_sale_point
+        payload.opening_reading = saleForm.opening_reading
+        payload.closing_reading = saleForm.closing_reading
+        payload.lorry_capacity_liters = Number(saleForm.lorry_capacity_liters)
+      } else {
+        payload.opening_reading = saleForm.opening_reading
+        payload.closing_reading = saleForm.closing_reading
+        payload.standard_jerrycans = Number(saleForm.standard_jerrycans || 0)
+        payload.custom_jerrycan_liters = Number(saleForm.custom_jerrycan_liters || 0)
       }
 
       const response = await apiRequest('/water-sales', {
@@ -302,28 +528,50 @@ export default function WaterManagement({ user }) {
     }
   }
 
+  function openCustomerForm(customer = null) {
+    setEditingCustomer(customer)
+    setCustomerForm(customer ? {
+      full_name: customer.full_name || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      address: customer.address || '',
+    } : emptyCustomer)
+    setNotice(null)
+    setShowCustomerForm(true)
+  }
+
   async function handleCustomerSubmit(event) {
     event.preventDefault()
     setNotice(null)
     setSaving(true)
 
     try {
-      const response = await apiRequest('/water-customers', {
-        method: 'POST',
-        body: JSON.stringify({
-          full_name: customerForm.full_name.trim(),
-          phone: customerForm.phone.trim() || null,
-          email: customerForm.email.trim() || null,
-          address: customerForm.address.trim() || null,
-          customer_type: 'external',
-        }),
-      })
+      const payload = {
+        full_name: customerForm.full_name.trim(),
+        phone: customerForm.phone.trim() || null,
+        email: customerForm.email.trim() || null,
+        address: customerForm.address.trim() || null,
+      }
+
+      const response = await apiRequest(
+        editingCustomer
+          ? `/water-customers/${editingCustomer.id}`
+          : '/water-customers',
+        {
+          method: editingCustomer ? 'PUT' : 'POST',
+          body: JSON.stringify({
+            ...payload,
+            ...(editingCustomer ? {} : { customer_type: 'external' }),
+          }),
+        },
+      )
 
       setNotice({
         type: 'success',
         message: response.message,
       })
       setCustomerForm(emptyCustomer)
+      setEditingCustomer(null)
       setShowCustomerForm(false)
       await loadCustomers()
     } catch (error) {
@@ -387,21 +635,23 @@ export default function WaterManagement({ user }) {
             Water Management
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Record shop and lorry sales, manage external customers, and monitor daily water revenue.
+            Record shop and lorry sales, manage home connection customers, and monitor daily water revenue.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setNotice(null)
-            if (tab === 'customers') setShowCustomerForm(true)
-            else setShowSaleForm(true)
-          }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-        >
-          <Plus size={18} />
-          {tab === 'customers' ? 'Add customer' : 'Record water sale'}
-        </button>
+        {tab !== 'rates' && (
+          <button
+            type="button"
+            onClick={() => {
+              setNotice(null)
+              if (tab === 'customers') setShowCustomerForm(true)
+              else setShowSaleForm(true)
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+          >
+            <Plus size={18} />
+            {tab === 'customers' ? 'Add customer' : 'Record water sale'}
+          </button>
+        )}
       </div>
 
       <Notice notice={notice} onClose={() => setNotice(null)} />
@@ -410,32 +660,92 @@ export default function WaterManagement({ user }) {
         <MetricCard
           title="Today's revenue"
           value={formatMoney(summary?.total_sales)}
-          subtitle={summaryDate}
+          subtitle={
+            summaryPeriod === 'today' ? 'Today'
+              : summaryPeriod === 'month' ? 'This Month'
+                : summaryPeriod === 'three_months' ? 'Last 3 Months'
+                  : 'Custom Date Range'
+          }
           icon={Banknote}
           tone="green"
         />
         <MetricCard
-          title="Water sold today"
-          value={`${formatQuantity(summary?.total_quantity)} units`}
-          subtitle="Total quantity recorded"
+          title="Total water sold"
+          value={`${formatQuantity(
+            Number(summary?.by_type?.shop?.quantity || 0) / 1000 +
+            Number(summary?.by_type?.lorry?.quantity || 0)
+          )} m³`}
+          subtitle="Jerrycan and lorry sales"
           icon={Droplets}
           tone="blue"
         />
         <MetricCard
-          title="Shop sales"
+          title="Jerrycan sales"
           value={formatMoney(summary?.by_type?.shop?.total_sales)}
-          subtitle={`${formatQuantity(summary?.by_type?.shop?.quantity)} units`}
+          subtitle={`${formatQuantity(Number(summary?.by_type?.shop?.quantity || 0) / 1000)} m³ sold`}
           icon={ShoppingBag}
           tone="orange"
         />
         <MetricCard
           title="Lorry sales"
           value={formatMoney(summary?.by_type?.lorry?.total_sales)}
-          subtitle={`${formatQuantity(summary?.by_type?.lorry?.quantity)} units`}
+          subtitle={`${formatQuantity(summary?.by_type?.lorry?.quantity)} m³ sold`}
           icon={Truck}
           tone="purple"
         />
       </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="mb-4">
+          <h2 className="font-bold text-slate-900">Water meter consumption</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Meter consumption for the selected period, displayed in litres and cubic metres.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            title="Total water consumed"
+            value={`${formatQuantity(Number(summary?.meter_consumption?.total_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.total_m3)} m³)`}
+            subtitle="Combined meter consumption"
+            icon={Droplets}
+            tone="blue"
+          />
+          <MetricCard
+            title="Jerrycan meter"
+            value={`${formatQuantity(Number(summary?.meter_consumption?.jerrycan_meter_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.jerrycan_meter_m3)} m³)`}
+            subtitle="Jerrycan meter"
+            icon={ShoppingBag}
+            tone="orange"
+          />
+          <MetricCard
+            title="Lorry Point A"
+            value={`${formatQuantity(Number(summary?.meter_consumption?.lorry_point_a_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.lorry_point_a_m3)} m³)`}
+            subtitle="Lorry meter A"
+            icon={Truck}
+            tone="purple"
+          />
+          <MetricCard
+            title="Lorry Point B"
+            value={`${formatQuantity(Number(summary?.meter_consumption?.lorry_point_b_m3 || 0) * 1000)} L (${formatQuantity(summary?.meter_consumption?.lorry_point_b_m3)} m³)`}
+            subtitle="Lorry meter B"
+            icon={Truck}
+            tone="green"
+          />
+        </div>
+
+        {Number(summary?.meter_consumption?.lorry_unassigned_m3 || 0) > 0 && (
+          <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            Historical lorry readings without an assigned meter point:
+            {' '}
+            <strong>
+              {formatQuantity(Number(summary.meter_consumption.lorry_unassigned_m3) * 1000)} L
+              ({formatQuantity(summary.meter_consumption.lorry_unassigned_m3)} m³)
+            </strong>
+            . These are included in total consumption.
+          </p>
+        )}
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -445,15 +755,40 @@ export default function WaterManagement({ user }) {
               Sales totals grouped by payment method.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <CalendarDays size={18} className="text-slate-400" />
-            <input
-              type="date"
-              value={summaryDate}
-              onChange={setSummaryDate}
+            <select
+              value={summaryPeriod}
+              onChange={(event) => setSummaryPeriod(event.target.value)}
               className={inputClass}
-              aria-label="Summary date"
-            />
+              aria-label="Summary period"
+            >
+              <option value="today">Today</option>
+              <option value="month">This Month</option>
+              <option value="three_months">Last 3 Months</option>
+              <option value="custom">Custom Range</option>
+            </select>
+
+            {summaryPeriod === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={customSummaryStart}
+                  onChange={(event) => setCustomSummaryStart(event.target.value)}
+                  className={inputClass}
+                  aria-label="Start date"
+                />
+                <input
+                  type="date"
+                  value={customSummaryEnd}
+                  min={customSummaryStart}
+                  onChange={(event) => setCustomSummaryEnd(event.target.value)}
+                  className={inputClass}
+                  aria-label="End date"
+                />
+              </>
+            )}
+
             <button
               type="button"
               onClick={loadSummary}
@@ -524,6 +859,8 @@ export default function WaterManagement({ user }) {
         {[
           { id: 'sales', label: 'Sales history', icon: Banknote },
           { id: 'customers', label: 'Water customers', icon: Users },
+          { id: 'billing', label: 'Meter Readings & Billing', icon: Droplets },
+          { id: 'rates', label: 'Water Rates', icon: Droplets },
         ].map((item) => {
           const Icon = item.icon
           const active = tab === item.id
@@ -536,11 +873,10 @@ export default function WaterManagement({ user }) {
                 setTab(item.id)
                 setNotice(null)
               }}
-              className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
-                active
+              className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${active
                   ? 'border-blue-600 text-blue-700'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               <Icon size={17} />
               {item.label}
@@ -568,7 +904,7 @@ export default function WaterManagement({ user }) {
                     className={inputClass}
                   >
                     <option value="">All types</option>
-                    <option value="shop">Shop sale</option>
+                    <option value="shop">Jerican sale</option>
                     <option value="lorry">Lorry sale</option>
                   </select>
                 </Field>
@@ -676,21 +1012,27 @@ export default function WaterManagement({ user }) {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                        {formatDate(sale.sale_date)}
+                        {formatDate(sale.created_at || sale.sale_date)}
                       </td>
                       <td className="px-5 py-4">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            sale.sale_type === 'lorry'
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${sale.sale_type === 'lorry'
                               ? 'bg-violet-50 text-violet-700'
                               : 'bg-orange-50 text-orange-700'
-                          }`}
+                            }`}
                         >
-                          {sale.sale_type === 'lorry' ? 'Lorry' : 'Shop'}
+                          {sale.sale_type === 'lorry' ? 'Lorry' : 'Jerrycan'}
                         </span>
                         <p className="mt-1.5 font-medium text-slate-800">
                           {sale.customer_name || 'Walk-in customer'}
                         </p>
+                        {sale.sale_type === 'lorry' && (
+                          <p className="mt-1 text-xs font-semibold text-violet-700">
+                            {sale.lorry_sale_point
+                              ? `Meter Point ${sale.lorry_sale_point}`
+                              : 'Meter point not assigned'}
+                          </p>
+                        )}
                         {sale.lorry_registration_number && (
                           <p className="mt-1 text-xs text-slate-500">
                             {sale.lorry_registration_number}
@@ -698,10 +1040,32 @@ export default function WaterManagement({ user }) {
                         )}
                       </td>
                       <td className="px-5 py-4 text-slate-700">
-                        {formatQuantity(sale.quantity)}
+                        <span className="font-semibold">
+                          {formatQuantity(
+                            Number(sale.quantity || 0) *
+                              (sale.sale_type === 'lorry' ? 1000 : 1)
+                          )} L
+                        </span>
+                        {sale.opening_reading != null &&
+                          sale.closing_reading != null && (
+                            <p className="mt-1 whitespace-nowrap text-xs text-slate-500">
+                              Opening: {formatQuantity(sale.opening_reading)} m³
+                            </p>
+                          )}
+                        {sale.opening_reading != null &&
+                          sale.closing_reading != null && (
+                            <p className="mt-1 whitespace-nowrap text-xs text-slate-500">
+                              Closing: {formatQuantity(sale.closing_reading)} m³
+                            </p>
+                          )}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-slate-600">
                         {formatMoney(sale.unit_price)}
+                        {sale.sale_type === 'lorry' && (
+                          <p className="mt-1 text-xs text-slate-400">
+                            Configured rate
+                          </p>
+                        )}
                       </td>
                       <td className="px-5 py-4 capitalize text-slate-600">
                         {sale.payment_method === 'mpesa'
@@ -734,9 +1098,9 @@ export default function WaterManagement({ user }) {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col justify-between gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5">
             <div>
-              <h2 className="font-bold text-slate-900">External water customers</h2>
+              <h2 className="font-bold text-slate-900">Home Connection Customers</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Manage people who receive water outside the rental properties.
+                Manage customers who receive water through home connections.
               </p>
             </div>
             <Field label="Customer status">
@@ -777,11 +1141,11 @@ export default function WaterManagement({ user }) {
               <Users size={28} className="mx-auto text-slate-300" />
               <h3 className="mt-3 font-semibold text-slate-800">No customers found</h3>
               <p className="mt-1 text-sm text-slate-500">
-                Register an external water customer to get started.
+                Register a home connection customer to get started.
               </p>
               <button
                 type="button"
-                onClick={() => setShowCustomerForm(true)}
+                onClick={() => openCustomerForm()}
                 className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
               >
                 Add customer
@@ -809,11 +1173,10 @@ export default function WaterManagement({ user }) {
                       </div>
                     </div>
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        customer.status === 'active'
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${customer.status === 'active'
                           ? 'bg-emerald-50 text-emerald-700'
                           : 'bg-slate-100 text-slate-500'
-                      }`}
+                        }`}
                     >
                       {customer.status}
                     </span>
@@ -825,15 +1188,24 @@ export default function WaterManagement({ user }) {
                     <p>{customer.address || 'No address provided'}</p>
                   </div>
 
-                  {isOwner && (
+                  <div className="mt-4 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => changeCustomerStatus(customer)}
-                      className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      onClick={() => openCustomerForm(customer)}
+                      className="flex-1 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
                     >
-                      {customer.status === 'active' ? 'Deactivate customer' : 'Reactivate customer'}
+                      Edit
                     </button>
-                  )}
+                    {isOwner && (
+                      <button
+                        type="button"
+                        onClick={() => changeCustomerStatus(customer)}
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        {customer.status === 'active' ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -852,14 +1224,15 @@ export default function WaterManagement({ user }) {
           </div>
         </section>
       )}
-
+      {tab === 'billing' && <WaterMeterBilling user={user} />}
+      {tab === 'rates' && <WaterRates user={user} />}
       {showSaleForm && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-3 backdrop-blur-sm sm:items-center sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-3 pt-6 backdrop-blur-sm sm:p-6 sm:pt-6">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="sale-dialog-title"
-            className="my-4 w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+            className="my-0 mb-6 w-full max-w-2xl shrink-0 rounded-2xl bg-white shadow-2xl sm:mb-6"
           >
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
               <div>
@@ -892,17 +1265,36 @@ export default function WaterManagement({ user }) {
                         event.target.value === 'lorry'
                           ? previous.lorry_registration_number
                           : '',
+                      lorry_sale_point:
+                        event.target.value === 'lorry'
+                          ? previous.lorry_sale_point
+                          : '',
                     }))
                   }
                   className={inputClass}
                   required
                 >
-                  <option value="shop">Shop sale</option>
+                  <option value="shop">Jerican sale</option>
                   <option value="lorry">Lorry sale</option>
                 </select>
               </Field>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Sale date" required>
+                  <input
+                    type="date"
+                    value={saleForm.sale_date || ''}
+                    onChange={(event) =>
+                      setSaleForm((previous) => ({
+                        ...previous,
+                        sale_date: event.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                    required
+                  />
+                </Field>
+
                 <Field label="Customer name" hint="Optional for walk-in sales">
                   <input
                     value={saleForm.customer_name}
@@ -916,6 +1308,26 @@ export default function WaterManagement({ user }) {
                     placeholder="Customer or business name"
                   />
                 </Field>
+
+                {isLorry && (
+                  <Field label="Lorry sale point" required>
+                    <select
+                      value={saleForm.lorry_sale_point}
+                      onChange={(event) =>
+                        setSaleForm((previous) => ({
+                          ...previous,
+                          lorry_sale_point: event.target.value,
+                        }))
+                      }
+                      className={inputClass}
+                      required
+                    >
+                      <option value="">Select lorry sale point</option>
+                      <option value="A">Lorry Sale Point A</option>
+                      <option value="B">Lorry Sale Point B</option>
+                    </select>
+                  </Field>
+                )}
 
                 {isLorry && (
                   <Field label="Lorry registration number" required>
@@ -935,41 +1347,176 @@ export default function WaterManagement({ user }) {
                   </Field>
                 )}
 
-                <Field label="Quantity (units)" required>
-                  <input
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    value={saleForm.quantity}
-                    onChange={(event) =>
-                      setSaleForm((previous) => ({
-                        ...previous,
-                        quantity: event.target.value,
-                      }))
-                    }
-                    className={inputClass}
-                    placeholder="e.g. 5"
-                    required
-                  />
-                </Field>
+                {isLorry ? (
+                  <>
+                    <Field label="Opening meter reading" required>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={saleForm.opening_reading}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            opening_reading: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="Enter opening reading"
+                        required
+                      />
+                    </Field>
 
-                <Field label="Unit price (KSh)" required>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={saleForm.unit_price}
-                    onChange={(event) =>
-                      setSaleForm((previous) => ({
-                        ...previous,
-                        unit_price: event.target.value,
-                      }))
-                    }
-                    className={inputClass}
-                    placeholder="e.g. 100"
-                    required
-                  />
-                </Field>
+                    <Field label="Closing meter reading" required>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={saleForm.closing_reading}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            closing_reading: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="Enter closing reading"
+                        required
+                      />
+                    </Field>
+
+                    <Field label="Calculated quantity (units)">
+                      <input
+                        type="text"
+                        value={lorryQuantity ? lorryQuantity.toFixed(3) : '0'}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Lorry capacity and fixed price" required>
+                      <select
+                        value={saleForm.lorry_capacity_liters}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            lorry_capacity_liters: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        required
+                      >
+                        <option value="">Select lorry capacity</option>
+                        <option value="5000">5,000 litres — KSh 500</option>
+                        <option value="10000">10,000 litres — KSh 1,000</option>
+                      </select>
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <Field label="Opening meter reading (m³)" required>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={saleForm.opening_reading}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            opening_reading: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="Enter opening reading"
+                        required
+                      />
+                    </Field>
+
+                    <Field label="Closing meter reading (m³)" required>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={saleForm.closing_reading}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            closing_reading: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="Enter closing reading"
+                        required
+                      />
+                    </Field>
+
+                    <Field label="Meter consumption (m³)">
+                      <input
+                        value={lorryQuantity.toFixed(3)}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Meter consumption (litres)">
+                      <input
+                        value={(lorryQuantity * 1000).toFixed(0)}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Standard jerrycans (20 litres each)">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={saleForm.standard_jerrycans}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            standard_jerrycans: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="e.g. 3"
+                      />
+                    </Field>
+
+                    <Field label="Customized jerrycans (combined litres)">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={saleForm.custom_jerrycan_liters}
+                        onChange={(event) =>
+                          setSaleForm((previous) => ({
+                            ...previous,
+                            custom_jerrycan_liters: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
+                        placeholder="e.g. 60 for two 30L cans"
+                      />
+                    </Field>
+
+                    <Field label="Total jerrycan litres sold">
+                      <input
+                        value={jerrycanQuantity.toFixed(3)}
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+
+                    <Field label="Price per litre">
+                      <input
+                        value="KSh 0.25"
+                        className={`${inputClass} bg-slate-50`}
+                        readOnly
+                      />
+                    </Field>
+                  </>
+                )}
 
                 <Field label="Payment method" required>
                   <select
@@ -1027,7 +1574,9 @@ export default function WaterManagement({ user }) {
                   {formatMoney(totalAmount)}
                 </p>
                 <p className="mt-1 text-xs text-blue-700">
-                  Quantity multiplied by unit price.
+                  {isLorry
+                    ? 'Meter readings are recorded for reference. The charge is fixed by the selected lorry capacity.'
+                    : 'Total jerrycan litres × KSh 0.25 per litre.'}
                 </p>
               </div>
 
@@ -1041,7 +1590,11 @@ export default function WaterManagement({ user }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || totalAmount <= 0}
+                  disabled={
+                    saving ||
+                    totalAmount <= 0 ||
+                    (isLorry && !['5000', '10000'].includes(String(saleForm.lorry_capacity_liters)))
+                  }
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving && <LoaderCircle size={17} className="animate-spin" />}
@@ -1064,15 +1617,15 @@ export default function WaterManagement({ user }) {
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
               <div>
                 <h2 id="customer-dialog-title" className="text-lg font-bold text-slate-900">
-                  Register water customer
+                  {editingCustomer ? 'Edit Home Connection Customer' : 'Register Home Connection Customer'}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Add an external customer who receives water.
+                  {editingCustomer ? 'Update the home connection customer details.' : 'Add a home connection customer who receives water.'}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCustomerForm(false)}
+                onClick={() => { setShowCustomerForm(false); setEditingCustomer(null); setCustomerForm(emptyCustomer); }}
                 className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
                 aria-label="Close customer form"
               >
@@ -1145,7 +1698,7 @@ export default function WaterManagement({ user }) {
               <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowCustomerForm(false)}
+                  onClick={() => { setShowCustomerForm(false); setEditingCustomer(null); setCustomerForm(emptyCustomer); }}
                   className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
@@ -1156,7 +1709,7 @@ export default function WaterManagement({ user }) {
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving && <LoaderCircle size={17} className="animate-spin" />}
-                  {saving ? 'Saving customer...' : 'Register customer'}
+                  {saving ? 'Saving customer...' : editingCustomer ? 'Save Changes' : 'Register Customer'}
                 </button>
               </div>
             </form>
