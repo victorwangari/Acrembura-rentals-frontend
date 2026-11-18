@@ -178,6 +178,15 @@ export default function WaterManagement({ user }) {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [notice, setNotice] = useState(null)
 
+  // Independent water consumption report state
+  const [consumptionSummary, setConsumptionSummary] = useState(null)
+  const [consumptionPeriod, setConsumptionPeriod] = useState('daily')
+  const [consumptionDate, setConsumptionDate] = useState(today())
+  const [consumptionMonth, setConsumptionMonth] = useState(today().slice(0, 7))
+  const [consumptionStart, setConsumptionStart] = useState(today())
+  const [consumptionEnd, setConsumptionEnd] = useState(today())
+  const [loadingConsumption, setLoadingConsumption] = useState(false)
+
   const isOwner = user?.role === 'owner'
   const isLorry = saleForm.sale_type === 'lorry'
 
@@ -367,6 +376,73 @@ export default function WaterManagement({ user }) {
       setLoadingSummary(false)
     }
   }, [summaryPeriod, customSummaryStart, customSummaryEnd])
+
+  // Load the independent water consumption report.
+  const loadConsumptionSummary = useCallback(async () => {
+    let startDate
+    let endDate
+
+    if (consumptionPeriod === 'daily') {
+      startDate = consumptionDate
+      endDate = consumptionDate
+    } else if (consumptionPeriod === 'monthly') {
+      if (!consumptionMonth) return
+
+      const [year, month] = consumptionMonth.split('-').map(Number)
+      const lastDay = new Date(year, month, 0).getDate()
+
+      startDate = `${consumptionMonth}-01`
+      endDate = `${consumptionMonth}-${String(lastDay).padStart(2, '0')}`
+    } else {
+      if (!consumptionStart || !consumptionEnd) return
+
+      if (consumptionStart > consumptionEnd) {
+        setNotice({
+          type: 'error',
+          message: 'The start date cannot be later than the end date.',
+        })
+        return
+      }
+
+      startDate = consumptionStart
+      endDate = consumptionEnd
+    }
+
+    setLoadingConsumption(true)
+
+    try {
+      const params = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate,
+      })
+
+      const response = await apiRequest(
+        `/water-sales/consumption-summary?${params}`
+      )
+
+      setConsumptionSummary(response.data)
+    } catch (error) {
+      setConsumptionSummary(null)
+      setNotice({
+        type: 'error',
+        message: `Could not load water consumption: ${error.message}`,
+      })
+    } finally {
+      setLoadingConsumption(false)
+    }
+  }, [
+    consumptionPeriod,
+    consumptionDate,
+    consumptionMonth,
+    consumptionStart,
+    consumptionEnd,
+  ])
+
+  useEffect(() => {
+    if (tab === 'consumption') {
+      loadConsumptionSummary()
+    }
+  }, [tab, loadConsumptionSummary])
 
   useEffect(() => {
     if (!showSaleForm || saleForm.sale_type !== 'shop') return
@@ -648,7 +724,7 @@ export default function WaterManagement({ user }) {
             Record shop and lorry sales, manage home connection customers, and monitor daily water revenue.
           </p>
         </div>
-        {tab !== 'rates' && (
+        {(tab === 'sales' || tab === 'customers') && (
           <button
             type="button"
             onClick={() => {
@@ -869,6 +945,7 @@ export default function WaterManagement({ user }) {
         {[
           { id: 'sales', label: 'Sales history', icon: Banknote },
           { id: 'customers', label: 'Water customers', icon: Users },
+          { id: 'consumption', label: 'Water Consumption', icon: Droplets },
           { id: 'billing', label: 'Meter Readings & Billing', icon: Droplets },
           { id: 'rates', label: 'Water Rates', icon: Droplets },
         ].map((item) => {
@@ -894,6 +971,185 @@ export default function WaterManagement({ user }) {
           )
         })}
       </div>
+
+      {tab === 'consumption' && (
+        <section className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <h2 className="font-bold text-slate-900">Water Consumption Report</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Monitor recorded water consumption across all distribution channels.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadConsumptionSummary}
+                disabled={loadingConsumption}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={loadingConsumption ? 'animate-spin' : ''} />
+                Refresh report
+              </button>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {[
+                { value: 'daily', label: 'Daily' },
+                { value: 'monthly', label: 'Monthly' },
+                { value: 'custom', label: 'Custom range' },
+              ].map((period) => (
+                <button
+                  key={period.value}
+                  type="button"
+                  onClick={() => setConsumptionPeriod(period.value)}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    consumptionPeriod === period.value
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {period.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {consumptionPeriod === 'daily' && (
+                <Field label="Select date">
+                  <input
+                    type="date"
+                    value={consumptionDate}
+                    onChange={(event) => setConsumptionDate(event.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              )}
+
+              {consumptionPeriod === 'monthly' && (
+                <Field label="Select month">
+                  <input
+                    type="month"
+                    value={consumptionMonth}
+                    onChange={(event) => setConsumptionMonth(event.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              )}
+
+              {consumptionPeriod === 'custom' && (
+                <>
+                  <Field label="Start date">
+                    <input
+                      type="date"
+                      value={consumptionStart}
+                      onChange={(event) => setConsumptionStart(event.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="End date">
+                    <input
+                      type="date"
+                      value={consumptionEnd}
+                      onChange={(event) => setConsumptionEnd(event.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                </>
+              )}
+            </div>
+
+            {consumptionSummary && (
+              <p className="mt-4 text-xs text-slate-500">
+                Report period: {consumptionSummary.start_date} to {consumptionSummary.end_date}
+              </p>
+            )}
+          </div>
+
+          {loadingConsumption ? (
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white p-12 text-sm text-slate-500">
+              <LoaderCircle size={20} className="animate-spin" />
+              Loading consumption report...
+            </div>
+          ) : consumptionSummary ? (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <MetricCard
+                  title="Main Meter"
+                  value={`${formatQuantity(Number(consumptionSummary.main_meter?.consumption_litres || 0))} L`}
+                  subtitle={`${formatQuantity(Number(consumptionSummary.main_meter?.consumption_m3 || 0))} m³ combined consumption`}
+                  icon={Droplets}
+                  tone="blue"
+                />
+
+                <MetricCard
+                  title="All Recorded Consumption"
+                  value={`${formatQuantity(Number(consumptionSummary.total?.consumption_litres || 0))} L`}
+                  subtitle={`${formatQuantity(Number(consumptionSummary.total?.consumption_m3 || 0))} m³ including unassigned and unclassified readings`}
+                  icon={Droplets}
+                  tone="green"
+                />
+              </div>
+
+              <div>
+                <div className="mb-3">
+                  <h3 className="font-bold text-slate-900">Consumption by source</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Recorded meter and water-sale readings.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    { key: 'lorry_point_a', title: 'Lorry Point A', icon: Truck, tone: 'purple' },
+                    { key: 'lorry_point_b', title: 'Lorry Point B', icon: Truck, tone: 'purple' },
+                    { key: 'unassigned_lorry', title: 'Unassigned Lorry', icon: Truck, tone: 'orange' },
+                    { key: 'jerrican_meter', title: 'Jerrican Meter', icon: ShoppingBag, tone: 'orange' },
+                    { key: 'home_connections', title: 'Home Connections', icon: Users, tone: 'green' },
+                    { key: 'rental_water', title: 'Rental Water', icon: Droplets, tone: 'blue' },
+                    { key: 'unclassified_meter', title: 'Unclassified Meter', icon: AlertCircle, tone: 'orange' },
+                  ].map((item) => {
+                    const channel = consumptionSummary.channels?.[item.key] || {}
+                    return (
+                      <MetricCard
+                        key={item.key}
+                        title={item.title}
+                        value={`${formatQuantity(Number(channel.consumption_litres || 0))} L`}
+                        subtitle={`${formatQuantity(Number(channel.consumption_m3 || 0))} m³ · ${channel.records || 0} records`}
+                        icon={item.icon}
+                        tone={item.tone}
+                      />
+                    )
+                  })}
+
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-slate-500">Hose / Flow Rate</p>
+                        <p className="mt-2 text-xl font-bold text-slate-700">Not recorded</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          No hose-flow readings are currently available.
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-slate-200 p-3 text-slate-600">
+                        <Droplets size={21} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+              <Droplets size={30} className="mx-auto text-slate-300" />
+              <h3 className="mt-3 font-semibold text-slate-800">No consumption report loaded</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Select a reporting period and refresh the report.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
 
       {tab === 'sales' ? (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1104,7 +1360,7 @@ export default function WaterManagement({ user }) {
             </button>
           </div>
         </section>
-      ) : (
+      ) : tab === 'customers' ? (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col justify-between gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:p-5">
             <div>
@@ -1233,7 +1489,7 @@ export default function WaterManagement({ user }) {
             </button>
           </div>
         </section>
-      )}
+      ) : null}
       {tab === 'billing' && <WaterMeterBilling user={user} />}
       {tab === 'rates' && <WaterRates user={user} />}
       {showSaleForm && (
@@ -1697,3 +1953,4 @@ export default function WaterManagement({ user }) {
     </div>
   )
 }
+
